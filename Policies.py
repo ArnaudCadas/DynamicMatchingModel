@@ -1,6 +1,8 @@
 import numpy as np
 import mipcl_py.mipshell.mipshell as mip
 from MatchingModel import *
+import torch
+from ddpg import Agent
 
 # We define a class for policies
 class Policy:
@@ -13,6 +15,30 @@ class Policy:
     
     def __str__(self):
         pass
+
+#######################
+### Noise Metaclass ###
+#######################
+
+def add_noise_params(policy_init):
+    def policy_noisy_init(self, *args, **kwargs):
+        self.noise_params = kwargs.pop('noise_params')
+        policy_init(self, *args, **kwargs)
+    return policy_noisy_init
+
+def add_noise(policy_match):
+    def policy_noisy_match(self, x):
+        u = policy_match(self, x)
+        for i, edge in enumerate(x.matchingGraph.edges):
+            u[edge] -= np.minimum(np.random.geometric(self.noise_params[i]),u[edge].min())
+        return u
+    return policy_noisy_match
+
+class Noise_Geom(type):
+    def __new__(cls, name, bases, attr):
+        attr['__init__'] = add_noise_params(bases[0].__init__)
+        attr['match'] = add_noise(bases[0].match)
+        return type.__new__(cls, name, bases, attr)
     
 # We define various policies by creating child class from Policy and implementing the function match()
 
@@ -38,6 +64,81 @@ class Random_policy(Policy):
     
     def __str__(self):
         return 'Random policy m={}'.format(self.nb_matchings_max)
+
+class RL_policy(Policy):
+    
+    def __init__(self):
+        # We initialise the agent
+        self.agent = Agent(state_size=4, action_size=3, random_seed=2)
+        # We set the weights to the trained model
+        self.agent.actor_local.load_state_dict(torch.load('trained_actor.pth'))
+        self.agent.critic_local.load_state_dict(torch.load('trained_critic.pth'))
+        
+    def match(self,x):
+        action = self.agent.act(x.data.copy())
+
+        # We transform the action in a matching
+        u = Matching.zeros(x)
+        tmp_x = x - u
+        for matching_edge, nb_matches in zip(x.matchingGraph.edges,action):
+            u[matching_edge] += np.minimum(np.floor(nb_matches), tmp_x[matching_edge].min())
+            tmp_x = x - u
+        return u
+    
+    def __str__(self):
+        return 'RL policy'
+
+class Threshold_policy_N(Policy):
+    
+    def __init__(self,threshold):
+        # We store the threshold
+        self.threshold = threshold
+        
+    def match(self,x):
+        u = Matching.zeros(x)
+        # We match all l1
+        u[1,1] += x[1,1].min()
+        # We match all l2
+        u[2,2] += x[2,2].min()
+        # We update the state with the matchings in l1 and l2 because they have priority and they influence the ones in l3
+        #print('u after match l1 and l2',u.data)
+        new_state = x - u
+        #print('new_state after match l1 and l2',new_state.data)
+        # We match all l3 above the threshold
+        l3_matchings = np.maximum(new_state[1,2].min() - self.threshold, 0.)
+        #print('threshold',self.threshold)
+        #print('l3 remaining',new_state[1,2].min())
+        #print('l3 remaining minus threshold',new_state[1,2].min() - self.threshold)
+        #print('l3 matchings', l3_matchings)
+        u[1,2] += l3_matchings
+        #print('u after match l3',u.data)
+        return u
+    
+    def __str__(self):
+        return 'Threshold policy t={}'.format(self.threshold)
+
+    def __call__(self,x):
+        return self.match(x)
+
+    def grad(self,x):
+        g = np.zeros(4)
+        if np.minimum(x.demand(1)-x[1,1].min(),x.supply(2)-x[2,2].min()) - self.threshold > 0.:
+            g[0] = -1.
+            g[3] = -1.
+        return g.reshape(1,-1)
+
+    @property
+    def theta(self):
+        return np.array([[self.threshold]])
+
+    @theta.setter
+    def theta(self, value):
+        print('value after update', value)
+        self.threshold = np.floor(np.maximum(value.item(),0.))
+        print('new threshold after projection', self.threshold)
+
+class Threshold_policy_N_noisy(Threshold_policy_N, metaclass=Noise_Geom):
+    pass
     
 class Threshold_policy(Policy):
     

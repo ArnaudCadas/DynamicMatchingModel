@@ -1,13 +1,17 @@
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from itertools import combinations, chain, product
 
+MARKERS = list(matplotlib.markers.MarkerStyle.markers.keys())
 
 class MatchingGraph:
     
     def __init__(self, edges, nb_demand_classes, nb_supply_classes):
         # Edges must be a list of tuples ('i','j') if demand class i can be matched with supply class j
         self.edges = edges
+        # We create a dictionary which gives the index of each edges
+        self.edgeToIndex = {edge: self.edges.index(edge) for edge in self.edges}
         self.nb_demand_classes = nb_demand_classes
         self.nb_supply_classes = nb_supply_classes
         # We compute the set and all subsets of demand classes
@@ -266,7 +270,6 @@ class Virtual_State(NodesData):
         else:
             raise TypeError("Items from a State can only be substracted with a Virtual Matching")
             
-    
 # We create a Matching class which is a State with more restrictions.
 # A matching can only add pairs of demand and supply items if they are associated to an edge in the matching graph.
 # A matching has a reference to a State and can't have more items than the referenced State in any nodes.
@@ -328,6 +331,61 @@ class Matching(State):
             
     def copy(self):
         return Matching(self.x,self.data.copy())
+    
+# We create a Matching class which stores the number of each edge to be matched.
+# A matching can only add pairs of demand and supply items if they are associated to an edge in the matching graph.
+# A matching has a reference to a State and can't have more items than the referenced State in any nodes.
+class Matching_wState():
+    
+    def __init__(self, x, values):
+        # The values must be stored, in a Numpy Array, organized as such: each value is the number of matchings in an edge in the same order as the edges list in the matchingGraph
+        self.values = values 
+        # We test that the number of demand items and the number of supply items are positives
+        if (self.values < 0).any():
+            raise ValueError("The number of matchings for each edge must be positive.")
+        # We store a reference to the State on which we will perform matchings
+        self.x = x
+        # We store the matchings as a State
+        self.state = self.toState()
+        # We test if the number of matchings is higher than the number of items in the State
+        if (self.state > x.data).any():
+            raise ValueError("The number of matched items can't be superior than the number of items in the State at any nodes")
+
+    def toState(self):
+        s = State.zeros(self.x.matchingGraph)
+        for i, edge in enumerate(self.x.matchingGraph.edges):
+            s[edge] += self.values[i]
+        return s.data
+    
+    @classmethod
+    def fromDict(cls, x, D):
+        values = np.zeros(len(x.matchingGraph.edges))
+        # The values must be stored in a dictionnary D where the keys are the edges as tuples
+        for edge in D.keys():
+            if edge not in x.matchingGraph.edges:
+                raise ValueError('A key from the dictionnary does not corespond to an edge of the matching graph')
+            else:
+                values[x.matchingGraph.edges.index(edge)] = D[edge]
+        return cls(x, values)
+        
+    @classmethod
+    def zeros(cls, x):
+        # We create an empty state
+        return cls(x, np.zeros(len(x.matchingGraph.edges)))
+    
+    def __setitem__(self, index, value):
+        # We test if the demand class i can be matched with the supply class j
+        if self.matchingGraph.isEdge(index):
+            # We test if the number of matchings has exceed the number of items in the State
+            if (value>self.x[index]).any():
+                raise ValueError("The number of matched items can't be superior than the number of items in the State at any nodes")
+            else:
+                super(Matching,self).__setitem__(index,value)
+        else:
+            raise ValueError("The pair do not correspond to an edge in the matching graph")
+            
+    def copy(self):
+        return Matching_wState(self.x,self.values.copy())
             
 # We define a Virtual Matching class which is the same as the Matching class excepts that we allow matchings to be made even if there is not enough items.
 # This type of matching is used in Stolyar policy
@@ -462,5 +520,21 @@ class Model:
             plt.legend(loc='best')
             plt.ylabel('Average cost')
         return costs_traj, x_traj
+
+    def discounted_cost(self, nb_iter, nb_runs, policies, theta, plot=False):
+        costs_trajs = np.zeros((len(policies), nb_runs, nb_iter+1))
+        discounts = np.array([np.power(theta,i) for i in np.arange(nb_iter+1)])
+        for r in np.arange(nb_runs):
+            x_traj = self.run(nb_iter, policies, traj=True)
+            costs_trajs[:,r,:] = np.cumsum(np.multiply(np.tensordot(self.costs.data,x_traj,axes=((0),(1))),discounts.reshape(1,-1)),axis=1)
+        mean_costs_traj = np.mean(costs_trajs,axis=1)
+        if plot:
+            # We plot the costs trajectory
+            plt.figure(figsize=(15,5))
+            for p, policy in enumerate(policies):
+                plt.plot(mean_costs_traj[p,:],marker=MARKERS[p],label=str(policy),markevery=int(nb_iter/10.))
+            plt.legend(loc='best')
+            plt.ylabel(r'Discounted cost $\theta$={}'.format(theta))
+        return mean_costs_traj, x_traj
         
 
