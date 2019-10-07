@@ -24,6 +24,13 @@ class MatchingGraph:
     @property
     def n(self):
         return self.nb_demand_classes + self.nb_supply_classes
+
+    @property
+    def nb_edges(self) -> int:
+        """
+        :return: Number of edges in the graph.
+        """
+        return len(self.edges)
     
     @property
     def nodes(self):
@@ -63,7 +70,7 @@ class MatchingGraph:
         if self.isEdge(e):
             return self.edges.index(e)
         else:
-            raise ValueError('This value does not correspond to an egde of the matching graph')
+            raise ValueError('This value does not correspond to an edge of the matching graph')
         
     def degree(self):
         # We count the degree of each node
@@ -130,7 +137,57 @@ class MatchingGraph:
                 list_maximal_matchings.append([(arrivals_classes[0],classes[0]),(classes[1],arrivals_classes[1])])
             
         return list_maximal_matchings
-    
+
+
+class EdgeData:
+    """
+    Stores data related to the edges of a MatchingGraph in an array.
+    """
+    def __init__(self, data: np.array, matching_graph: MatchingGraph):
+        """
+        :param data: Array which stores the data related to each edge. The value at a given index is related to the edge
+            stored at the same index in the matching_graph.edges array.
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
+        self.data = data
+        self.matching_graph = matching_graph
+
+    @classmethod
+    def from_dict(cls, data: dict, matching_graph: MatchingGraph):
+        """
+        :param data: Dictionary which stores the data related to each edge. Each key should be an edge in the
+            matching_graph.edges array.
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
+        data_array = np.zeros(matching_graph.nb_edges)
+        for edge in data.keys():
+            if matching_graph.isEdge(edge):
+                raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
+            else:
+                data_array[matching_graph.edgeIndex(edge)] = data[edge]
+        return cls(data_array, matching_graph)
+
+    @classmethod
+    def zeros(cls, matching_graph: MatchingGraph):
+        """ Creates an EdgeData with zeros for all edges.
+
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
+        return cls(np.zeros(matching_graph.nb_edges), matching_graph)
+
+    def __getitem__(self, edge):
+        return self.data[self.matching_graph.edgeIndex(edge)]
+
+    def __setitem__(self, edge, value):
+        self.data[self.matching_graph.edgeIndex(edge)] = value
+
+    def copy(self):
+        return self.__class__(self.data.copy(), self.matching_graph)
+
+    def __str__(self):
+        return str(self.data)
+
+
 # We define a class NodesData which is a data structure for our system. 
 # It stores a value for each classes of demand and supply items.
 # It is used for example to store the length of the queues, the holding costs or the arrival rates
@@ -429,38 +486,47 @@ class Model:
         if traj:
             # We keep the trajectory of the system under each policy
             state_size = self.matchingGraph.n
-            trajectories = np.zeros((nb_policies,state_size,nb_iter+1))
-            trajectories[:,:,0] = self.x_0.data
+            trajectories = np.zeros((nb_policies, state_size, nb_iter+1))
+            trajectories[:, :, 0] = self.x_0.data
             for i in np.arange(nb_iter):
-                self.iterate(states_list,policies) 
-                trajectories[:,:,i+1] = [state.data for state in states_list]
+                self.iterate(states_list, policies)
+                trajectories[:, :, i+1] = [state.data for state in states_list]
             
             if plot:
+                # plt.ion()
                 # We plot the trajectories
-                fig, axes = plt.subplots(nb_policies,1,figsize=(15,nb_policies*5),squeeze=0)
+                fig, axes = plt.subplots(nb_policies, 1, figsize=(15, nb_policies*5), squeeze=0)
                 for p, policy in enumerate(policies):
                     for e in np.arange(state_size):
-                        lab = "d_"+str(e+1) if e<self.matchingGraph.nb_demand_classes else "s_"+str(e-self.matchingGraph.nb_demand_classes+1)
-                        axes[p,0].plot(trajectories[p,e,:],label=lab)
-                    axes[p,0].legend(loc='best')
-                    axes[p,0].set_title(str(policy))
+                        lab = "d_"+str(e+1) if e < self.matchingGraph.nb_demand_classes else "s_"+str(e-self.matchingGraph.nb_demand_classes+1)
+                        axes[p, 0].plot(trajectories[p, e, :], label=lab)
+                    axes[p, 0].legend(loc='best')
+                    axes[p, 0].set_title(str(policy))
+                fig.canvas.draw()
+                plt.pause(0.1)
+                fig.canvas.flush_events()
             return trajectories
         else:
             for _ in np.arange(nb_iter):
-                self.iterate(states_list,policies)
+                self.iterate(states_list, policies)
             return states_list
         
     def average_cost(self, nb_iter, policies, plot=False):
         x_traj = self.run(nb_iter, policies, traj=True)
-        costs_traj = [np.cumsum(np.dot(self.costs.data.reshape(1,-1),x_traj[i,:,:]))/np.arange(1.,nb_iter+2) for i in np.arange(len(policies))]
+        costs_traj = [np.cumsum(np.dot(self.costs.data.reshape(1, -1),
+                                       x_traj[i, :, :]))/np.arange(1., nb_iter+2) for i in np.arange(len(policies))]
         if plot:
+            # plt.ion()
             # We plot the costs trajectory
-            plt.figure(figsize=(15,5))
+            fig, ax = plt.subplots(1, 1, figsize=(15, 5))
             linestyles = ['-', '--', '-^', ':']
             for p, policy in enumerate(policies):
-                plt.plot(costs_traj[p],linestyles[p],label=str(policy),markevery=int(nb_iter/10.))
-            plt.legend(loc='best')
-            plt.ylabel('Average cost')
+                ax.plot(costs_traj[p], linestyles[p], label=str(policy), markevery=int(nb_iter/10.))
+            ax.legend(loc='best')
+            ax.set_ylabel('Average cost')
+            fig.canvas.draw()
+            plt.pause(0.1)
+            fig.canvas.flush_events()
         return costs_traj, x_traj
         
 

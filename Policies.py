@@ -90,6 +90,36 @@ class TwP_policy(Policy):
     def __str__(self):
         #return 'TwP policy t={}'.format(self.thresholds)
         return 'Thresholds with Priority policy'
+
+
+class ThresholdsWithPriorities(Policy):
+
+    def __init__(self, matching_order, thresholds: EdgeData):
+        """
+        :param matching_order: EdgeData giving the order in which each edge will be matched.
+        :param thresholds: EdgeData giving the threshold above which each edge will be matched.
+        """
+        self.matching_order = matching_order
+        self.thresholds = thresholds
+
+    def match(self, x) -> Matching:
+        """
+        :param x: State from which to match from.
+        :return: Matching based on the State and the Policy used.
+        """
+        u = Matching.zeros(x)
+        current_state = x.copy()
+        for edge_index in self.matching_order.data:
+            edge = x.matchingGraph.edges[edge_index]
+            # We match all above the threshold
+            u[edge] += np.maximum(current_state[edge].min() - self.thresholds[edge], 0.)
+            # We update the state with the matchings because they have priority and they influence the future ones
+            current_state = x - u
+        return u
+
+    def __str__(self):
+        return 'TwP p={} t={}'.format(self.matching_order, self.thresholds)
+
     
 class TwPbis_policy(Policy):
     
