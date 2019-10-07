@@ -94,15 +94,16 @@ class TwP_policy(Policy):
 
 class ThresholdsWithPriorities(Policy):
 
-    def __init__(self, matching_order, thresholds: EdgeData):
+    def __init__(self, matching_order: EdgeData, thresholds: EdgeData):
         """
         :param matching_order: EdgeData giving the order in which each edge will be matched.
         :param thresholds: EdgeData giving the threshold above which each edge will be matched.
         """
+        assert matching_order.matching_graph is thresholds.matching_graph
         self.matching_order = matching_order
         self.thresholds = thresholds
 
-    def match(self, x) -> Matching:
+    def match(self, x: State) -> Matching:
         """
         :param x: State from which to match from.
         :return: Matching based on the State and the Policy used.

@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations, chain, product
+from typing import Tuple
 
 
 class MatchingGraph:
@@ -149,6 +150,7 @@ class EdgeData:
             stored at the same index in the matching_graph.edges array.
         :param matching_graph: MatchingGraph to which this data is related to.
         """
+        assert len(data) == matching_graph.nb_edges
         self.data = data
         self.matching_graph = matching_graph
 
@@ -156,15 +158,15 @@ class EdgeData:
     def from_dict(cls, data: dict, matching_graph: MatchingGraph):
         """
         :param data: Dictionary which stores the data related to each edge. Each key should be an edge in the
-            matching_graph.edges array.
+            matching_graph.edges array. If an edge is not in the dictionary keys, then we put a default value of 0.
         :param matching_graph: MatchingGraph to which this data is related to.
         """
         data_array = np.zeros(matching_graph.nb_edges)
         for edge in data.keys():
             if matching_graph.isEdge(edge):
-                raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
-            else:
                 data_array[matching_graph.edgeIndex(edge)] = data[edge]
+            else:
+                raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
         return cls(data_array, matching_graph)
 
     @classmethod
@@ -175,10 +177,10 @@ class EdgeData:
         """
         return cls(np.zeros(matching_graph.nb_edges), matching_graph)
 
-    def __getitem__(self, edge):
+    def __getitem__(self, edge: Tuple):
         return self.data[self.matching_graph.edgeIndex(edge)]
 
-    def __setitem__(self, edge, value):
+    def __setitem__(self, edge: Tuple, value):
         self.data[self.matching_graph.edgeIndex(edge)] = value
 
     def copy(self):
