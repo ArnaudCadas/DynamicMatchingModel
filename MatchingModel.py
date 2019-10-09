@@ -12,15 +12,21 @@ class MatchingGraph:
         self.nb_demand_classes = nb_demand_classes
         self.nb_supply_classes = nb_supply_classes
         # We compute the set and all subsets of demand classes
-        self.demand_class_set = np.arange(1,self.nb_demand_classes+1)
+        self.demand_class_set = np.arange(1, self.nb_demand_classes+1)
         self.demand_class_subsets = [tuple(c) for c in chain.from_iterable(combinations(self.demand_class_set, r) for r in self.demand_class_set)]
         # We create a dictionary which maps each subset of demand classes to the subset of supply classes to witch its linked
         self.build_demandToSupply()
         # We compute the set and all subsets of supply classes
-        self.supply_class_set = np.arange(1,nb_supply_classes+1)
+        self.supply_class_set = np.arange(1, nb_supply_classes+1)
         self.supply_class_subsets = [tuple(c) for c in chain.from_iterable(combinations(self.supply_class_set, r) for r in np.arange(1,nb_supply_classes+1))]
         # We create a dictionary which maps each subset of supply classes to the subset of demand classes to witch its linked
         self.build_supplyToDemand()
+        # We create a matrix to transform an EdgeData into a NodesData (if the values are scalars)
+        self.edges_to_nodes = np.zeros((self.n, self.nb_edges))
+        for i, edge in enumerate(self.edges):
+            edge_as_nodes_data = NodesData.zeros(self)
+            edge_as_nodes_data[edge] = 1.
+            self.edges_to_nodes[:, i] = edge_as_nodes_data.data
         
     @property
     def n(self):
@@ -469,6 +475,7 @@ class Model:
         arrivals = self.sample_arrivals()
         for p, policy in enumerate(policies):
             # We apply the matchings
+            # print('State: ', states_list[p].data, ' Policy: ', str(policy), ' Match: ', policy.match(states_list[p]).data)
             states_list[p] -= policy.match(states_list[p]) 
             # We add the arrivals
             states_list[p] += arrivals
@@ -492,6 +499,7 @@ class Model:
             trajectories[:, :, 0] = self.x_0.data
             for i in np.arange(nb_iter):
                 self.iterate(states_list, policies)
+                # print([state.data for state in states_list])
                 trajectories[:, :, i+1] = [state.data for state in states_list]
             
             if plot:

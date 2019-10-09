@@ -92,6 +92,28 @@ class TwP_policy(Policy):
         return 'Thresholds with Priority policy'
 
 
+class P14T23(Policy):
+
+    def __init__(self, thresholds):
+        # We store the thresholds as [s_1, s_2]
+        self.thresholds = thresholds
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all (1,1) and all (3,2)
+        u[1, 1] += x[1, 1].min()
+        u[3, 2] += x[3, 2].min()
+        # We update the state with the matchings because they have priority and they influence the future ones
+        new_state = x - u
+        # We match all (2,1) above the threshold in s_1 and we match all (2,2) above the threshold in s_2
+        u[2, 1] += np.minimum(np.maximum(new_state.supply(1) - self.thresholds[0], 0.), new_state.demand(2))
+        u[2, 2] += np.minimum(np.maximum(new_state.supply(2) - self.thresholds[1], 0.), new_state.demand(2))
+        return u
+
+    def __str__(self):
+        return 'TwP policy t={}'.format(self.thresholds)
+
+
 class ThresholdsWithPriorities(Policy):
 
     def __init__(self, matching_order: EdgeData, thresholds: EdgeData):
@@ -210,6 +232,64 @@ class MaxWeight_policy(Policy):
     
     def __str__(self):
         return 'MaxWeight policy'
+
+
+class OptimiseMW(mip.Problem):
+    """ Implementation of the optimisation program that is used in the MaxWeight Policy. """
+
+    def model(self, x: State, costs: NodesData):
+        """
+        :param x: State upon which the matchings are done.
+        :param costs: NodesData giving the cost at each node.
+        """
+        nb_edges = x.matchingGraph.nb_edges
+        nb_nodes = x.matchingGraph.n
+        edges_to_nodes = x.matchingGraph.edges_to_nodes
+        # The variables are the number of matching in each edge
+        self.u = u = mip.VarVector([nb_edges], "u", mip.INT, lb=0, ub=mip.VAR_INF)
+        # The goal is to maximize u\\cdot \\nabla h(x) where h(x)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2.
+        # mip.maximize(mip.sum_(costs.data[i] * x.data[i] * mip.sum_(edges_to_nodes[i, j] * u[j] for j in range(nb_edges))
+        #                       for i in range(nb_nodes)))
+        mip.maximize(mip.sum_(np.sum(np.multiply(costs[edge], x[edge])) * u[i] for i, edge in enumerate(x.matchingGraph.edges)))
+
+        # The inequalities constraints
+        # The number of matchings can not be higher than the number of items in the system
+        for i in range(nb_nodes):
+            mip.sum_(edges_to_nodes[i, j] * u[j] for j in range(nb_edges)) <= x.data[i]
+
+
+class MaxWeight(Policy):
+    """
+    This policy, given a State x, gives any feasible Matching u which maximise the following optimisation problem:
+    u\\cdot \\nabla h(x) where h(x)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2. i.e, it matches the most
+    costly nodes (a product of the individual cost and the number of item in the node) in priority.
+    """
+
+    def __init__(self, costs: NodesData):
+        """
+        :param costs: NodesData giving the cost at each node.
+        """
+        self.costs = costs
+
+    def match(self, x: State):
+        """
+        :param x: State upon which the matchings are done.
+        :return: Matching resulted from using the MaxWeight Policy on the State x.
+        """
+        prob = OptimiseMW("MaxWeight")
+        prob.model(x=x, costs=self.costs)
+        prob.optimize(silent=True)
+        if prob.is_solution:
+            u_star = Matching.zeros(x)
+            for i in np.arange(x.matchingGraph.nb_edges):
+                u_star[x.matchingGraph.edges[i]] += prob.u[i].val
+            return u_star
+        else:
+            raise ValueError('The MIP optimizer has not found a solution')
+
+    def __str__(self):
+        return 'MaxWeight policy'
+
     
 class Stolyar_policy(Policy):
     
