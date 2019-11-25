@@ -111,7 +111,147 @@ class P14T23(Policy):
         return u
 
     def __str__(self):
-        return 'TwP policy t={}'.format(self.thresholds)
+        return 'P14T23 policy t={}'.format(self.thresholds)
+
+
+class P14T23D2(Policy):
+
+    def __init__(self, thresholds):
+        # We store the thresholds as [s_1, d_2 + d_3]
+        self.thresholds = thresholds
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all (1,1) and all (3,2)
+        u[1, 1] += x[1, 1].min()
+        u[3, 2] += x[3, 2].min()
+        # We update the state with the matchings because they have priority and they influence the future ones
+        new_state = x - u
+        # We match all (2,1) above the threshold in s_1 and we match all (2,2) above the threshold in s_2
+        u[2, 1] += np.min([np.maximum(new_state.supply(1) - self.thresholds[0], 0.),
+                           np.maximum(new_state.demand(2) + new_state.demand(3) - self.thresholds[1], 0.),
+                           new_state.demand(2)])
+        u[2, 2] += new_state[2, 2].min()
+        return u
+
+    def __str__(self):
+        return 'P14T23D2 policy t={}'.format(self.thresholds)
+
+
+class P13T24D2(Policy):
+
+    def __init__(self, thresholds):
+        # We store the thresholds as [s_1, d_2 + d_3]
+        self.thresholds = thresholds
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all (1,1) and all (3,2)
+        u[1, 1] += x[1, 1].min()
+        u[2, 2] += x[2, 2].min()
+        # We update the state with the matchings because they have priority and they influence the future ones
+        new_state = x - u
+        # We match all (2,1) above the threshold in s_1 and we match all (2,2) above the threshold in s_2
+        u[3, 2] += new_state[3, 2].min()
+        new_state = x - u
+        u[2, 1] += np.min([np.maximum(new_state.supply(1) - self.thresholds[0], 0.),
+                           np.maximum(new_state.demand(2) + new_state.demand(3) - self.thresholds[1], 0.),
+                           new_state.demand(2)])
+        return u
+
+    def __str__(self):
+        return 'P13T24D2 policy t={}'.format(self.thresholds)
+
+
+class OptimalW(Policy):
+
+    def __init__(self, thresholds):
+        # We store the thresholds as [s_1 or d_3]
+        self.thresholds = thresholds
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all (1,1) and all (3,2)
+        u[1, 1] += x[1, 1].min()
+        if x.demand(1) >= x.supply(1):
+            u[3, 2] += x[3, 2].min()
+            u[2, 2] += x[2, 2].min()
+            return u
+        else:
+            # We update the state with the matchings because they have priority and they influence the future ones
+            new_state = x - u
+            # We match all (2,1) above the threshold in s_1 and we match all (3,2) above the threshold in d_3
+            u[2, 1] += np.minimum(np.maximum(new_state.supply(1) - self.thresholds[0], 0.), new_state.demand(2))
+            u[3, 2] += np.minimum(np.maximum(new_state.demand(3) - self.thresholds[0], 0.), new_state.supply(2))
+            # We update the state with the matchings because they have priority and they influence the future ones
+            new_state = x - u
+            # We match all (2,2) remaining
+            u[2, 2] += new_state[2, 2].min()
+            # We update the state with the matchings because they have priority and they influence the future ones
+            new_state = x - u
+            # We match all (3,2) remaining
+            u[3, 2] += new_state[3, 2].min()
+            return u
+
+    def __str__(self):
+        return 'OptimalW policy t={}'.format(self.thresholds)
+
+
+class OptimalWBis(Policy):
+
+    def __init__(self, thresholds):
+        # We store the thresholds as [s_1 or d_3]
+        self.thresholds = thresholds
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all (1,1) and all (3,2)
+        u[1, 1] += x[1, 1].min()
+        if x.demand(1) >= x.supply(1):
+            u[3, 2] += x[3, 2].min()
+            u[2, 2] += x[2, 2].min()
+            return u
+        else:
+            # We update the state with the matchings because they have priority and they influence the future ones
+            new_state = x - u
+            # We match all (2,1) above the threshold in s_1 and we match all (3,2) above the threshold in d_3
+            u[2, 1] += np.minimum(np.maximum(new_state.supply(1) - self.thresholds[0], 0.), new_state.demand(2))
+            # We update the state with the matchings because they have priority and they influence the future ones
+            new_state = x - u
+            if new_state.demand(2) > 0:
+                u[3, 2] += np.minimum(np.maximum(new_state.demand(3) - self.thresholds[0], 0.), new_state.supply(2))
+            else:
+                u[3, 2] += new_state[3, 2].min()
+            # We update the state with the matchings because they have priority and they influence the future ones
+            new_state = x - u
+            # We match all (2,2) remaining
+            u[2, 2] += new_state[2, 2].min()
+            return u
+
+    def __str__(self):
+        return 'OptimalWBis policy t={}'.format(self.thresholds)
+
+
+class P13T24(Policy):
+
+    def __init__(self, thresholds):
+        # We store the thresholds as [s_1, s_2]
+        self.thresholds = thresholds
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all (1,1) and all (2,2)
+        u[1, 1] += x[1, 1].min()
+        u[2, 2] += x[2, 2].min()
+        # We update the state with the matchings because they have priority and they influence the future ones
+        new_state = x - u
+        # We match all (2,1) above the threshold in s_1 and we match all (3,2) above the threshold in s_2
+        u[2, 1] += np.minimum(np.maximum(new_state.supply(1) - self.thresholds[0], 0.), new_state.demand(2))
+        u[3, 2] += np.minimum(np.maximum(new_state.supply(2) - self.thresholds[1], 0.), new_state.demand(2))
+        return u
+
+    def __str__(self):
+        return 'P13T24 policy t={}'.format(self.thresholds)
 
 
 class ThresholdsWithPriorities(Policy):
