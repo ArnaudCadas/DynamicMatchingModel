@@ -111,7 +111,8 @@ class P14T23(Policy):
         return u
 
     def __str__(self):
-        return 'P14T23 policy t={}'.format(self.thresholds)
+        # return 'P14T23 policy t={}'.format(self.thresholds)
+        return "Thresholds in (2,1) and (2,2) with priority in (1,1) and (3,2)"
 
 
 class P14T23D2(Policy):
@@ -160,7 +161,8 @@ class P13T24D2(Policy):
         return u
 
     def __str__(self):
-        return 'P13T24D2 policy t={}'.format(self.thresholds)
+        # return 'P13T24D2 policy t={}'.format(self.thresholds)
+        return "Thresholds in (2,1) and (3,2) with priority in (1,1) and (2,2)"
 
 
 class OptimalW(Policy):
