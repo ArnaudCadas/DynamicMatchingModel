@@ -147,6 +147,12 @@ class MatchingGraph:
 
         return list_maximal_matchings
 
+    def __eq__(self, other):
+        if isinstance(other, MatchingGraph):
+            return np.all(self.edges == other.edges) and self.nb_demand_classes == other.nb_demand_classes and \
+                   self.nb_supply_classes == other.nb_supply_classes
+        return NotImplemented
+
 
 class EdgeData:
     """
@@ -203,25 +209,26 @@ class EdgeData:
 # It stores a value for each classes of demand and supply items.
 # It is used for example to store the length of the queues, the holding costs or the arrival rates
 class NodesData:
+    # TODO: change all "data" to "values" in the initialization methods
 
-    def __init__(self, A, matchingGraph):
+    def __init__(self, data, matchingGraph):
         # The values must be stored, in a Numpy Array, organized as such: first the demand items, then the supply items and both sorted by classes in increasing order
         # This means that index i represent demand class i+1 and index nb_demand_classes+j represent supply class j+1
-        self.data = A
+        self.data = data
         self.matchingGraph = matchingGraph
 
     @classmethod
-    def fromDict(cls, D, matchingGraph):
-        A = np.zeros(matchingGraph.n)
+    def fromDict(cls, data, matchingGraph):
+        data_array = np.zeros(matchingGraph.n)
         # The values must be stored in a dictionnary D where the keys are the nodes
-        for node in D.keys():
+        for node in data.keys():
             if node not in matchingGraph.nodes:
                 raise ValueError('A key from the dictionnary does not corespond to a node of the matching graph')
             elif node[0] == 'd':
-                A[int(node[1]) - 1] = D[node]
+                data_array[int(node[1]) - 1] = data[node]
             else:
-                A[matchingGraph.nb_demand_classes + int(node[1]) - 1] = D[node]
-        return cls(A, matchingGraph)
+                data_array[matchingGraph.nb_demand_classes + int(node[1]) - 1] = data[node]
+        return cls(data_array, matchingGraph)
 
     @classmethod
     def zeros(cls, matchingGraph):
@@ -248,11 +255,20 @@ class NodesData:
         self.data[[i - 1, self.matchingGraph.nb_demand_classes + j - 1]] = value
 
     def __add__(self, other):
-        return self.__class__(self.data + other.data, self.matchingGraph)
+        if type(other) == self.__class__:
+            return self.__class__(self.data + other.data, self.matchingGraph)
+        return NotImplemented
 
     def __iadd__(self, other):
-        self.data += other.data
-        return self
+        if type(other) == self.__class__:
+            self.data += other.data
+            return self
+        return NotImplemented
+
+    def __eq__(self, other):
+        if type(other) == self.__class__:
+            return np.all(self.data == other.data) and self.matchingGraph == other.matchingGraph
+        return NotImplemented
 
     def copy(self):
         return self.__class__(self.data.copy(), self.matchingGraph)
@@ -285,13 +301,6 @@ class State(NodesData):
         # We construct a subgraph composed of all the edges which can be matched given the State
         return MatchingGraph(self.matchings_available(), self.matchingGraph.nb_demand_classes,
                              self.matchingGraph.nb_supply_classes)
-
-    def __iadd__(self, other):
-        if isinstance(other, State):
-            self.data += other.data
-            return self
-        else:
-            raise TypeError("A State can only be added with another State")
 
     def __sub__(self, other):
         if isinstance(other, Matching):
@@ -344,6 +353,7 @@ class Virtual_State(NodesData):
 # A matching can only add pairs of demand and supply items if they are associated to an edge in the matching graph.
 # A matching has a reference to a State and can't have more items than the referenced State in any nodes.
 class Matching(State):
+    # TODO: change the inheritance to EdgeData and create a transformation from EdgeData to NodeData
 
     def __init__(self, x, values):
         super(Matching, self).__init__(values, x.matchingGraph)
