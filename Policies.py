@@ -279,7 +279,7 @@ class ThresholdsWithPriorities(Policy):
         u = Matching.zeros(x)
         current_state = x.copy()
         for edge_index in self.matching_order.data:
-            edge = x.matchingGraph.edges[edge_index]
+            edge = x.matching_graph.edges[edge_index]
             # We match all above the threshold
             u[edge] += np.maximum(current_state[edge].min() - self.thresholds[edge], 0.)
             # We update the state with the matchings because they have priority and they influence the future ones
@@ -390,16 +390,16 @@ class OptimiseMW(mip.Problem):
         :param x: State upon which the matchings are done.
         :param costs: NodesData giving the cost at each node.
         """
-        nb_edges = x.matchingGraph.nb_edges
-        nb_nodes = x.matchingGraph.n
-        edges_to_nodes = x.matchingGraph.edges_to_nodes
+        nb_edges = x.matching_graph.nb_edges
+        nb_nodes = x.matching_graph.n
+        edges_to_nodes = x.matching_graph.edges_to_nodes
         # The variables are the number of matching in each edge
         self.u = u = mip.VarVector([nb_edges], "u", mip.INT, lb=0, ub=mip.VAR_INF)
         # The goal is to maximize u\\cdot \\nabla h(x) where h(x)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2.
         # mip.maximize(mip.sum_(costs.data[i] * x.data[i] * mip.sum_(edges_to_nodes[i, j] * u[j] for j in range(nb_edges))
         #                       for i in range(nb_nodes)))
         mip.maximize(
-            mip.sum_(np.sum(np.multiply(costs[edge], x[edge])) * u[i] for i, edge in enumerate(x.matchingGraph.edges)))
+            mip.sum_(np.sum(np.multiply(costs[edge], x[edge])) * u[i] for i, edge in enumerate(x.matching_graph.edges)))
 
         # The inequalities constraints
         # The number of matchings can not be higher than the number of items in the system
@@ -430,8 +430,8 @@ class MaxWeight(Policy):
         prob.optimize(silent=True)
         if prob.is_solution:
             u_star = Matching.zeros(x)
-            for i in np.arange(x.matchingGraph.nb_edges):
-                u_star[x.matchingGraph.edges[i]] += prob.u[i].val
+            for i in np.arange(x.matching_graph.nb_edges):
+                u_star[x.matching_graph.edges[i]] += prob.u[i].val
             return u_star
         else:
             raise ValueError('The MIP optimizer has not found a solution')
@@ -705,7 +705,7 @@ class hMWT(mip.Problem):
     def model(self, x, grad_h, w, tau_star, Idle_index, NUmax):
         nb_edges = len(x.matchingGraph.edges)
         # The variables are the number of matching in each edge
-        # u[i] correspond to the number of matching in x.matchingGraph.edges[i]
+        # u[i] correspond to the number of matching in x.matching_graph.edges[i]
         self.u = u = mip.VarVector([nb_edges], "u", mip.INT, lb=0, ub=NUmax)
         # The goal is to maximize grad_h*u
         mip.maximize(mip.sum_(grad_h[i] * u[i] for i in range(nb_edges)))

@@ -158,53 +158,60 @@ class MatchingGraph:
 # It stores a value for each classes of demand and supply items.
 # It is used for example to store the length of the queues, the holding costs or the arrival rates
 class NodesData:
+    """
+    Stores data related to the edges of a MatchingGraph in an array.
+    """
 
-    def __init__(self, data, matchingGraph):
-        # The values must be stored, in a Numpy Array, organized as such: first the demand items, then the supply items and both sorted by classes in increasing order
-        # This means that index i represent demand class i+1 and index nb_demand_classes+j represent supply class j+1
+    def __init__(self, data: np.array, matching_graph: MatchingGraph):
+        """
+        :param data: Array which stores the data related to each node. It is organized as such: first the demand items,
+            then the supply items and both sorted by classes in increasing order. This means that index i represent
+            demand class i + 1 and index nb_demand_classes + j represent supply class j + 1.
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
         self.data = data
-        self.matchingGraph = matchingGraph
+        self.matching_graph = matching_graph
 
     @classmethod
-    def fromDict(cls, data, matchingGraph):
-        data_array = np.zeros(matchingGraph.n)
+    def fromDict(cls, data, matching_graph):
+        data_array = np.zeros(matching_graph.n)
         # The values must be stored in a dictionnary D where the keys are the nodes
         for node in data.keys():
-            if node not in matchingGraph.nodes:
+            if node not in matching_graph.nodes:
                 raise ValueError('A key from the dictionnary does not corespond to a node of the matching graph')
             elif node[0] == 'd':
                 data_array[int(node[1]) - 1] = data[node]
             else:
-                data_array[matchingGraph.nb_demand_classes + int(node[1]) - 1] = data[node]
-        return cls(data_array, matchingGraph)
+                data_array[matching_graph.nb_demand_classes + int(node[1]) - 1] = data[node]
+        return cls(data_array, matching_graph)
 
     @classmethod
-    def zeros(cls, matchingGraph):
+    def zeros(cls, matching_graph):
         # We create an empty state
-        return cls(np.zeros(matchingGraph.n), matchingGraph)
+        return cls(np.zeros(matching_graph.n), matching_graph)
 
     @classmethod
-    def items(cls, demand_items, supply_items, matchingGraph):
+    def items(cls, demand_items, supply_items, matching_graph):
         # We create a state by giving two separate array for demand and supply items
-        return cls(np.hstack((demand_items, supply_items)), matchingGraph)
+        return cls(np.hstack((demand_items, supply_items)), matching_graph)
 
     def demand(self, classes):
         return self.data[classes - 1]
 
     def supply(self, classes):
-        return self.data[classes - 1 + self.matchingGraph.nb_demand_classes]
+        return self.data[classes - 1 + self.matching_graph.nb_demand_classes]
 
-    def __getitem__(self, index):
-        i, j = index
-        return self.data[[i - 1, self.matchingGraph.nb_demand_classes + j - 1]]
+    def __getitem__(self, edge: Tuple):
+        demand_class, supply_class = edge
+        return self.data[[demand_class - 1, self.matching_graph.nb_demand_classes + supply_class - 1]]
 
-    def __setitem__(self, index, value):
-        i, j = index
-        self.data[[i - 1, self.matchingGraph.nb_demand_classes + j - 1]] = value
+    def __setitem__(self, edge: Tuple, value):
+        demand_class, supply_class = edge
+        self.data[[demand_class - 1, self.matching_graph.nb_demand_classes + supply_class - 1]] = value
 
     def __add__(self, other):
         if type(other) == self.__class__:
-            return self.__class__(self.data + other.data, self.matchingGraph)
+            return self.__class__(self.data + other.data, self.matching_graph)
         return NotImplemented
 
     def __iadd__(self, other):
@@ -215,53 +222,102 @@ class NodesData:
 
     def __eq__(self, other):
         if type(other) == self.__class__:
-            return np.all(self.data == other.data) and self.matchingGraph == other.matchingGraph
+            return np.all(self.data == other.data) and self.matching_graph == other.matching_graph
         return NotImplemented
 
     def copy(self):
-        return self.__class__(self.data.copy(), self.matchingGraph)
+        return self.__class__(self.data.copy(), self.matching_graph)
 
 
 # We define a class State which is a NodesData with the constraint that demand and supply items must be positives and their sum equal
 # It is used for example to store the length of the queues, arrival items or matchings
 class State(NodesData):
 
-    def __init__(self, values, matchingGraph):
+    def __init__(self, values: np.array, matching_graph: MatchingGraph, capacity=np.inf):
+        """
+        :param values: Array which stores the number of items in each node. It is organized as such: first the demand
+            items, then the supply items and both sorted by classes in increasing order. This means that index i
+            represent demand class i + 1 and index nb_demand_classes + j represent supply class j + 1.
+        :param matching_graph: MatchingGraph to which this data is related to.
+        :param capacity: Maximal number of items that can be held for each node. Default is infinite.
+        """
+        self.capacity = capacity
         # We use the NodesData initialization
-        super(State, self).__init__(values, matchingGraph)
+        super(State, self).__init__(values, matching_graph)
         # We test that the number of demand items and the number of supply items are positives
-        if (self.data < 0).any():
+        if np.any(self.data < 0):
             raise ValueError("The number of demand items and the number of supply items must be positives.")
+        # We test that the number of demand items and the number of supply items are less than the capacity
+        if np.any(self.data > self.capacity):
+            raise ValueError("The number of demand items and the number of supply items must be less than capacity.")
         # We test that the sum of demand items is equal to the sum of supply items
-        if self.demand(self.matchingGraph.demand_class_set).sum() != self.supply(
-                self.matchingGraph.supply_class_set).sum():
+        if self.demand(self.matching_graph.demand_class_set).sum() != self.supply(
+                self.matching_graph.supply_class_set).sum():
             raise ValueError("The sum of demand items must be equal to the sum of supply items.")
 
     def matchings_available(self):
         # We construct a list of all the edges which can be matched given the State
         list_edges = []
-        for edge in self.matchingGraph.edges:
+        for edge in self.matching_graph.edges:
             if (self[edge] >= 1).all():
                 list_edges.append(edge)
         return list_edges
 
     def matchings_available_subgraph(self):
         # We construct a subgraph composed of all the edges which can be matched given the State
-        return MatchingGraph(self.matchings_available(), self.matchingGraph.nb_demand_classes,
-                             self.matchingGraph.nb_supply_classes)
+        return MatchingGraph(self.matchings_available(), self.matching_graph.nb_demand_classes,
+                             self.matching_graph.nb_supply_classes)
+
+    def __setitem__(self, edge: Tuple, value):
+        if np.any(value < 0):
+            raise ValueError("The number of demand items and the number of supply items must be positives.")
+        if np.any(value > self.capacity):
+            raise ValueError("The number of demand items and the number of supply items must be less than capacity.")
+        super(State, self).__setitem__(edge, value)
+
+    def __add__(self, other):
+        if type(other) == State:
+            assert self.matching_graph == other.matching_graph and self.capacity == other.capacity
+            _sum = State(self.data + other.data, self.matching_graph, self.capacity)
+            if np.any(_sum.data > _sum.capacity):
+                raise ValueError(
+                    "The number of demand items and the number of supply items must be less than capacity.")
+            return _sum
+        return NotImplemented
+
+    def __iadd__(self, other):
+        if type(other) == State:
+            assert self.matching_graph == other.matching_graph and self.capacity == other.capacity
+            self.data += other.data
+            if np.any(self.data > self.capacity):
+                raise ValueError(
+                    "The number of demand items and the number of supply items must be less than capacity.")
+            return self
+        return NotImplemented
 
     def __sub__(self, other):
         if isinstance(other, Matching):
-            return State(self.data - other.to_nodesdata(), self.matchingGraph)
+            assert self.matching_graph == other.matching_graph
+            return State(self.data - other.to_nodesdata(), self.matching_graph)
         else:
             raise TypeError("Items from a State can only be substracted with a Matching")
 
     def __isub__(self, other):
         if isinstance(other, Matching):
+            assert self.matching_graph == other.matching_graph
             self.data -= other.to_nodesdata()
             return self
         else:
             raise TypeError("Items from a State can only be substracted with a Matching")
+
+    def __eq__(self, other):
+        if type(other) == self.__class__:
+            return np.all(self.data == other.data) and self.matching_graph == other.matching_graph and \
+                   self.capacity == other.capacity
+        return NotImplemented
+
+    def copy(self):
+        return self.__class__(self.data.copy(), self.matching_graph, self.capacity)
 
 
 # We define a class Virtual State that acts as a State excepts that we allow negative values.
@@ -272,8 +328,8 @@ class Virtual_State(NodesData):
         # We use the NodesData initialization
         super(Virtual_State, self).__init__(values, matchingGraph)
         # We test that the sum of demand items is equal to the sum of supply items
-        if self.demand(self.matchingGraph.demand_class_set).sum() != self.supply(
-                self.matchingGraph.supply_class_set).sum():
+        if self.demand(self.matching_graph.demand_class_set).sum() != self.supply(
+                self.matching_graph.supply_class_set).sum():
             raise ValueError("The sum of demand items must be equal to the sum of supply items.")
 
     def __iadd__(self, other):
@@ -285,7 +341,7 @@ class Virtual_State(NodesData):
 
     def __sub__(self, other):
         if isinstance(other, Virtual_Matching):
-            return Virtual_State(self.data - other.data, self.matchingGraph)
+            return Virtual_State(self.data - other.data, self.matching_graph)
         else:
             raise TypeError("Items from a State can only be substracted with a Virtual Matching")
 
@@ -373,7 +429,7 @@ class Matching(EdgesData):
         # We store a reference to the State on which we will perform matchings
         self.state = state
         # We use the EdgesData initialization
-        super(Matching, self).__init__(values, state.matchingGraph)
+        super(Matching, self).__init__(values, state.matching_graph)
         # We test that the values for each edge is positive
         if (self.data < 0).any():
             raise ValueError("The number of matchings in each edge must be positive.")
@@ -389,10 +445,10 @@ class Matching(EdgesData):
         :param values: Dictionary which stores the data related to each edge. Each key should be an edge in the
             matching_graph.edges array. If an edge is not in the dictionary keys, then we put a default value of 0.
         """
-        values_array = np.zeros(state.matchingGraph.nb_edges)
+        values_array = np.zeros(state.matching_graph.nb_edges)
         for edge in values.keys():
-            if state.matchingGraph.isEdge(edge):
-                values_array[state.matchingGraph.edgeIndex(edge)] = values[edge]
+            if state.matching_graph.isEdge(edge):
+                values_array[state.matching_graph.edgeIndex(edge)] = values[edge]
             else:
                 raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
         return cls(state, values_array)
@@ -403,7 +459,7 @@ class Matching(EdgesData):
         :param state: the State on which is performed the matching.
         """
         # We create an empty state
-        return cls(state, np.zeros(state.matchingGraph.nb_edges))
+        return cls(state, np.zeros(state.matching_graph.nb_edges))
 
     def to_nodesdata(self):
         return np.dot(self.matching_graph.edges_to_nodes, self.data)
@@ -439,13 +495,13 @@ class Virtual_Matching(State):
 
     def feasible(self):
         feasible_matching = True
-        for subset in self.matchingGraph.demand_class_subsets:
+        for subset in self.matching_graph.demand_class_subsets:
             if self.demand(np.array(subset)).sum() > self.supply(
-                    np.array(self.matchingGraph.demandToSupply[subset])).sum():
+                    np.array(self.matching_graph.demandToSupply[subset])).sum():
                 feasible_matching = False
-        for subset in self.matchingGraph.supply_class_subsets:
+        for subset in self.matching_graph.supply_class_subsets:
             if self.supply(np.array(subset)).sum() > self.demand(
-                    np.array(self.matchingGraph.supplyToDemand[subset])).sum():
+                    np.array(self.matching_graph.supplyToDemand[subset])).sum():
                 feasible_matching = False
         return feasible_matching
 
@@ -474,7 +530,7 @@ class Virtual_Matching(State):
 
     def __setitem__(self, index, value):
         # We test if the demand class i can be matched with the supply class j
-        if self.matchingGraph.isEdge(index):
+        if self.matching_graph.isEdge(index):
             super(Virtual_Matching, self).__setitem__(index, value)
         else:
             raise ValueError("The pair do not correspond to an edge in the matching graph")
