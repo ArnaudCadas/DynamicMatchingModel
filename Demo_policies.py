@@ -30,7 +30,7 @@ plt.ion()
 res = test_model.run(nb_iter=1000, policies=P, plot=True)
 
 t = time.time()
-N = 1000000
+N = 10000
 c, x = test_model.average_cost(N, P, plot=True)
 print(time.time()-t)
 for i in range(len(P)):
