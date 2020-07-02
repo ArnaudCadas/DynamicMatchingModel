@@ -161,6 +161,7 @@ class NodesData:
     """
     Stores data related to the edges of a MatchingGraph in an array.
     """
+    # TODO: add assertion about equality of matching graph in operators
 
     def __init__(self, data: np.array, matching_graph: MatchingGraph):
         """
@@ -358,6 +359,8 @@ class EdgesData:
     Stores data related to the edges of a MatchingGraph in an array.
     """
 
+    # TODO: add assertion about equality of matching graph in operators
+
     def __init__(self, data: np.array, matching_graph: MatchingGraph):
         """
         :param data: Array which stores the data related to each edge. The value at a given index is related to the edge
@@ -419,6 +422,7 @@ class EdgesData:
 # A matching can only add pairs of demand and supply items if they are associated to an edge in the matching graph.
 # A matching has a reference to a State and can't have more items than the referenced State in any nodes.
 class Matching(EdgesData):
+    # TODO: add assertion about equality of matching graph in operators
 
     def __init__(self, state: State, values: np.array):
         """
@@ -541,8 +545,8 @@ class Virtual_Matching(State):
 
 class Model:
 
-    def __init__(self, matchingGraph, arrival_dist, costs, x_0):
-        self.matchingGraph = matchingGraph
+    def __init__(self, matching_graph: MatchingGraph, arrival_dist: NodesData, costs: NodesData, x_0: State):
+        self.matching_graph = matching_graph
         # We initialize the class probabilities
         self.arrival_dist = arrival_dist
         # We stores the holding costs
@@ -551,13 +555,13 @@ class Model:
         self.x_0 = x_0
 
     def sample_arrivals(self):
-        a = State.zeros(self.matchingGraph)
+        a = State.zeros(self.matching_graph)
         # We sample the class of the demand item
-        d = np.random.choice(self.matchingGraph.demand_class_set,
-                             p=self.arrival_dist.demand(self.matchingGraph.demand_class_set))
+        d = np.random.choice(self.matching_graph.demand_class_set,
+                             p=self.arrival_dist.demand(self.matching_graph.demand_class_set))
         # We sample the class of the supply item
-        s = np.random.choice(self.matchingGraph.supply_class_set,
-                             p=self.arrival_dist.supply(self.matchingGraph.supply_class_set))
+        s = np.random.choice(self.matching_graph.supply_class_set,
+                             p=self.arrival_dist.supply(self.matching_graph.supply_class_set))
         a[d, s] += 1
         return a
 
@@ -566,17 +570,16 @@ class Model:
         arrivals = self.sample_arrivals()
         for p, policy in enumerate(policies):
             # We apply the matchings
-            # print('State: ', states_list[p].data, ' Policy: ', str(policy), ' Match: ', policy.match(states_list[p]).data)
             states_list[p] -= policy.match(states_list[p])
             # We add the arrivals
             states_list[p] += arrivals
-        # return states_list
+        return states_list
 
     def run(self, nb_iter, policies, traj=False, plot=False):
         nb_policies = len(policies)
         # states_list stores the state of the system under each policy given by the list policies
         states_list = []
-        # We intialize each state to the initial state of the model x_0 and reset each policy
+        # We initialize each state to the initial state of the model x_0 and reset each policy
         for policy in policies:
             states_list.append(self.x_0.copy())
             policy.reset_policy(self.x_0)
@@ -585,11 +588,11 @@ class Model:
             traj = True
         if traj:
             # We keep the trajectory of the system under each policy
-            state_size = self.matchingGraph.n
+            state_size = self.matching_graph.n
             trajectories = np.zeros((nb_policies, state_size, nb_iter + 1))
             trajectories[:, :, 0] = self.x_0.data
             for i in np.arange(nb_iter):
-                self.iterate(states_list, policies)
+                states_list = self.iterate(states_list, policies)
                 # print([state.data for state in states_list])
                 trajectories[:, :, i + 1] = [state.data for state in states_list]
 
@@ -599,8 +602,8 @@ class Model:
                 fig, axes = plt.subplots(nb_policies, 1, figsize=(15, nb_policies * 5), squeeze=0)
                 for p, policy in enumerate(policies):
                     for e in np.arange(state_size):
-                        lab = "d_" + str(e + 1) if e < self.matchingGraph.nb_demand_classes else "s_" + str(
-                            e - self.matchingGraph.nb_demand_classes + 1)
+                        lab = "d_" + str(e + 1) if e < self.matching_graph.nb_demand_classes else "s_" + str(
+                            e - self.matching_graph.nb_demand_classes + 1)
                         axes[p, 0].plot(trajectories[p, e, :], label=lab)
                     axes[p, 0].legend(loc='best')
                     axes[p, 0].set_title(str(policy))
@@ -610,7 +613,7 @@ class Model:
             return trajectories
         else:
             for _ in np.arange(nb_iter):
-                self.iterate(states_list, policies)
+                states_list = self.iterate(states_list, policies)
             return states_list
 
     def average_cost(self, nb_iter, policies, plot=False):

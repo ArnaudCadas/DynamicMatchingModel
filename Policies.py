@@ -42,6 +42,29 @@ class Random_policy(Policy):
         return 'Random policy m={}'.format(self.nb_matchings_max)
 
 
+class Threshold_N(Policy):
+
+    def __init__(self, threshold):
+        self.threshold = threshold
+
+    def match(self, x):
+        u = Matching.zeros(x)
+        # We match all l1
+        u[1, 1] += x[1, 1].min()
+        # We match all l2
+        u[2, 2] += x[2, 2].min()
+        # We update the state with the matchings in l1 and l2 because they have priority and they influence the ones in
+        # l3
+        new_state = x - u
+        # We match all l3 above the threshold
+        l3_matchings = np.maximum(new_state[1, 2].min() - self.threshold, 0.)
+        u[1, 2] += l3_matchings
+        return u
+
+    def __str__(self):
+        return 'Threshold N policy t={}'.format(self.threshold)
+
+
 class Threshold_policy(Policy):
 
     def __init__(self, thresholds):

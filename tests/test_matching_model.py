@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 
 import MatchingModel as Model
+import Policies as Policies
 
 
 class TestMatchingGraph:
@@ -564,3 +565,53 @@ class TestMatching:
 
         assert TestMatching.N_matching == N_matching_copy
         assert TestMatching.N_matching.data is not N_matching_copy.data
+
+
+class TestModel:
+    N_model = Model.Model(matching_graph=TestMatchingGraph.N_graph,
+                          arrival_dist=Model.NodesData.items(demand_items=np.array([0.6, 0.4]),
+                                                             supply_items=np.array([0.4, 0.6]),
+                                                             matching_graph=TestMatchingGraph.N_graph),
+                          costs=Model.NodesData(data=np.ones(4), matching_graph=TestMatchingGraph.N_graph),
+                          x_0=Model.State.zeros(matching_graph=TestMatchingGraph.N_graph))
+
+    def test_init(self):
+        matching_graph = TestMatchingGraph.N_graph
+        alpha = np.array([0.6, 0.4])
+        beta = np.array([0.4, 0.6])
+        arrival_dist = Model.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=matching_graph)
+        costs = Model.NodesData(data=np.ones(4), matching_graph=matching_graph)
+        x_0 = Model.State.zeros(matching_graph=matching_graph)
+        N_model_a = Model.Model(matching_graph=matching_graph, arrival_dist=arrival_dist, costs=costs, x_0=x_0)
+
+        assert N_model_a.matching_graph == matching_graph
+        assert N_model_a.arrival_dist == arrival_dist
+        assert N_model_a.costs == costs
+        assert N_model_a.x_0 == x_0
+
+    def test_sample_arrivals(self):
+        N = 10000.
+        total_arrivals = Model.State.zeros(TestModel.N_model.matching_graph)
+        for _ in np.arange(N):
+            arrivals = TestModel.N_model.sample_arrivals()
+            total_arrivals += arrivals
+        mean_arrivals = total_arrivals.data / N
+
+        assert np.allclose(mean_arrivals, TestModel.N_model.arrival_dist.data, atol=1e-2)
+
+    def test_iterate(self):
+        # costs = Model.NodesData(data=np.array([3., 1., 2., 3.]), matching_graph=TestMatchingGraph.N_graph)
+        # policies = [Policies.Threshold_N(threshold=3), Policies.MaxWeight(costs=costs)]
+        # states_list = []
+        # # We initialize each state to the initial state of the model x_0 and reset each policy
+        # for policy in policies:
+        #     states_list.append(TestModel.N_model.x_0.copy())
+        #     policy.reset_policy(TestModel.N_model.x_0)
+        #
+        # states_list = TestModel.N_model.iterate(states_list=states_list, policies=policies)
+        # state_threshold_a = Model.State(values=np.array([0., 0.]))
+        # assert np.all(states_list == [])
+        pass
+
+    def test_run(self):
+        pass
