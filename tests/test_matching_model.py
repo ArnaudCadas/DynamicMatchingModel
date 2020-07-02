@@ -289,12 +289,9 @@ class TestState:
         assert not TestState.N_state == N_nodes_a
 
 
-class TestMatching:
-    # TODO
-    pass
-
-
 class TestEdgesData:
+    N_edgesdata = Model.EdgesData(data=np.array([1., 1., 1.]), matching_graph=TestMatchingGraph.N_graph)
+
     def test_init(self):
         data = np.array([2., 0., -1.])
         matching_graph = Model.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
@@ -378,6 +375,11 @@ class TestEdgesData:
         with pytest.raises(ValueError):
             ed[(3, 2)] = 9.
 
+    def test_eq(self):
+        N_edgesdata_copy = Model.EdgesData(data=np.array([1., 1., 1.]), matching_graph=TestMatchingGraph.N_graph)
+
+        assert TestEdgesData.N_edgesdata == N_edgesdata_copy
+
     def test_copy(self):
         data = np.array([2., 0., -1.])
         matching_graph = Model.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
@@ -394,3 +396,102 @@ class TestEdgesData:
         ed = Model.EdgesData(data=data, matching_graph=matching_graph)
 
         assert str(ed) == str(data)
+
+
+class TestMatching:
+    N_matching = Model.Matching(state=TestState.N_state, values=np.array([1., 1., 1.]))
+
+    def test_init(self):
+        values_a = np.array([1., 1., 1.])
+        N_matching_a = Model.Matching(state=TestState.N_state, values=values_a)
+
+        assert N_matching_a.state == TestState.N_state
+        assert np.all(N_matching_a.data == values_a)
+        assert N_matching_a.matching_graph == TestState.N_state.matchingGraph
+
+        values_b = np.array([-2., 1., 1.])
+        with pytest.raises(ValueError):
+            _ = Model.Matching(state=TestState.N_state, values=values_b)
+
+        values_c = np.array([4., 0., 0.])
+        with pytest.raises(ValueError):
+            _ = Model.Matching(state=TestState.N_state, values=values_c)
+
+        values_d = np.array([1., 1.])
+        with pytest.raises(AssertionError):
+            _ = Model.Matching(state=TestState.N_state, values=values_d)
+
+    def test_fromDict(self):
+        data_a = {(1, 1): 1., (1, 2): 2., (2, 2): 1.}
+        data_array_a = np.array([1., 2., 1.])
+        N_matching_a = Model.Matching.fromDict(state=TestState.N_state, values=data_a)
+
+        assert np.all(N_matching_a.data == data_array_a)
+
+        data_b = {(1, 1): 2., (1, 2): 0.}
+        data_array_b = np.array([2., 0., 0.])
+        N_matching_b = Model.Matching.fromDict(state=TestState.N_state, values=data_b)
+
+        assert np.all(N_matching_b.data == data_array_b)
+
+        data_c = {(3, 2): 2.}
+        with pytest.raises(ValueError):
+            _ = Model.Matching.fromDict(state=TestState.N_state, values=data_c)
+
+    def test_zeros(self):
+        data_array_a = np.array([0., 0., 0.])
+        N_matching_a = Model.Matching.zeros(state=TestState.N_state)
+
+        assert np.all(N_matching_a.data == data_array_a)
+
+    def test_to_nodesdata(self):
+        values_a = np.array([1., 0., 0.])
+        N_matching_a = Model.Matching(state=TestState.N_state, values=values_a)
+        nodes_values_a = np.array([1., 0., 1., 0.])
+
+        assert np.all(N_matching_a.to_nodesdata() == nodes_values_a)
+
+        values_b = np.array([0., 1., 0.])
+        N_matching_b = Model.Matching(state=TestState.N_state, values=values_b)
+        nodes_values_b = np.array([1., 0., 0., 1.])
+
+        assert np.all(N_matching_b.to_nodesdata() == nodes_values_b)
+
+        values_c = np.array([0., 0., 1.])
+        N_matching_c = Model.Matching(state=TestState.N_state, values=values_c)
+        nodes_values_c = np.array([0., 1., 0., 1.])
+
+        assert np.all(N_matching_c.to_nodesdata() == nodes_values_c)
+
+        values_d = np.array([1., 2., 1.])
+        N_matching_d = Model.Matching(state=TestState.N_state, values=values_d)
+        nodes_values_d = np.array([3., 1., 1., 3.])
+
+        assert np.all(N_matching_d.to_nodesdata() == nodes_values_d)
+
+    def test_setitem(self):
+        N_matching_copy = TestMatching.N_matching.copy()
+        N_matching_copy[(1, 1)] = 3.
+        N_matching_copy[(1, 2)] = 2.
+        N_matching_copy[(2, 2)] = 0.
+
+        assert N_matching_copy[(1, 1)] == 3.
+        assert N_matching_copy[(1, 2)] == 2.
+        assert N_matching_copy[(2, 2)] == 0.
+
+        with pytest.raises(ValueError):
+            N_matching_copy[(3, 2)] = 0.
+
+        with pytest.raises(ValueError):
+            N_matching_copy[(1, 1)] = 4.
+
+    def test_eq(self):
+        N_matching_copy = Model.Matching(state=TestState.N_state, values=np.array([1., 1., 1.]))
+
+        assert TestMatching.N_matching == N_matching_copy
+
+    def test_copy(self):
+        N_matching_copy = TestMatching.N_matching.copy()
+
+        assert TestMatching.N_matching == N_matching_copy
+        assert TestMatching.N_matching.data is not N_matching_copy.data

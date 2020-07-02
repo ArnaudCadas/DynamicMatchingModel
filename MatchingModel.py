@@ -347,6 +347,11 @@ class EdgesData:
         else:
             raise ValueError("The pair do not correspond to an edge in the matching graph")
 
+    def __eq__(self, other):
+        if type(other) == self.__class__:
+            return np.all(self.data == other.data) and self.matching_graph == other.matching_graph
+        return NotImplemented
+
     def copy(self):
         return self.__class__(self.data.copy(), self.matching_graph)
 
@@ -409,6 +414,12 @@ class Matching(EdgesData):
         if np.any(self.to_nodesdata() > self.state.data):
             raise ValueError(
                 "The number of matched items can't be superior than the number of items in the State at any nodes")
+
+    def __eq__(self, other):
+        if type(other) == self.__class__:
+            return np.all(self.data == other.data) and self.matching_graph == other.matching_graph and \
+                   self.state == other.state
+        return NotImplemented
 
     def copy(self):
         return Matching(self.state, self.data.copy())
