@@ -262,7 +262,7 @@ class P13T24(Policy):
 
 class ThresholdsWithPriorities(Policy):
 
-    def __init__(self, matching_order: EdgeData, thresholds: EdgeData):
+    def __init__(self, matching_order: EdgesData, thresholds: EdgesData):
         """
         :param matching_order: EdgeData giving the order in which each edge will be matched.
         :param thresholds: EdgeData giving the threshold above which each edge will be matched.

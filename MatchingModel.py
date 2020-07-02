@@ -154,62 +154,10 @@ class MatchingGraph:
         return NotImplemented
 
 
-class EdgeData:
-    """
-    Stores data related to the edges of a MatchingGraph in an array.
-    """
-
-    def __init__(self, data: np.array, matching_graph: MatchingGraph):
-        """
-        :param data: Array which stores the data related to each edge. The value at a given index is related to the edge
-            stored at the same index in the matching_graph.edges array.
-        :param matching_graph: MatchingGraph to which this data is related to.
-        """
-        assert len(data) == matching_graph.nb_edges
-        self.data = data
-        self.matching_graph = matching_graph
-
-    @classmethod
-    def from_dict(cls, data: dict, matching_graph: MatchingGraph):
-        """
-        :param data: Dictionary which stores the data related to each edge. Each key should be an edge in the
-            matching_graph.edges array. If an edge is not in the dictionary keys, then we put a default value of 0.
-        :param matching_graph: MatchingGraph to which this data is related to.
-        """
-        data_array = np.zeros(matching_graph.nb_edges)
-        for edge in data.keys():
-            if matching_graph.isEdge(edge):
-                data_array[matching_graph.edgeIndex(edge)] = data[edge]
-            else:
-                raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
-        return cls(data_array, matching_graph)
-
-    @classmethod
-    def zeros(cls, matching_graph: MatchingGraph):
-        """ Creates an EdgeData with zeros for all edges.
-
-        :param matching_graph: MatchingGraph to which this data is related to.
-        """
-        return cls(np.zeros(matching_graph.nb_edges), matching_graph)
-
-    def __getitem__(self, edge: Tuple):
-        return self.data[self.matching_graph.edgeIndex(edge)]
-
-    def __setitem__(self, edge: Tuple, value):
-        self.data[self.matching_graph.edgeIndex(edge)] = value
-
-    def copy(self):
-        return self.__class__(self.data.copy(), self.matching_graph)
-
-    def __str__(self):
-        return str(self.data)
-
-
 # We define a class NodesData which is a data structure for our system.
 # It stores a value for each classes of demand and supply items.
 # It is used for example to store the length of the queues, the holding costs or the arrival rates
 class NodesData:
-    # TODO: change all "data" to "values" in the initialization methods
 
     def __init__(self, data, matchingGraph):
         # The values must be stored, in a Numpy Array, organized as such: first the demand items, then the supply items and both sorted by classes in increasing order
@@ -304,13 +252,13 @@ class State(NodesData):
 
     def __sub__(self, other):
         if isinstance(other, Matching):
-            return State(self.data - other.data, self.matchingGraph)
+            return State(self.data - other.to_nodesdata(), self.matchingGraph)
         else:
             raise TypeError("Items from a State can only be substracted with a Matching")
 
     def __isub__(self, other):
         if isinstance(other, Matching):
-            self.data -= other.data
+            self.data -= other.to_nodesdata()
             return self
         else:
             raise TypeError("Items from a State can only be substracted with a Matching")
@@ -349,72 +297,121 @@ class Virtual_State(NodesData):
             raise TypeError("Items from a State can only be substracted with a Virtual Matching")
 
 
-# We create a Matching class which is a State with more restrictions.
-# A matching can only add pairs of demand and supply items if they are associated to an edge in the matching graph.
-# A matching has a reference to a State and can't have more items than the referenced State in any nodes.
-class Matching(State):
-    # TODO: change the inheritance to EdgeData and create a transformation from EdgeData to NodeData
+class EdgesData:
+    """
+    Stores data related to the edges of a MatchingGraph in an array.
+    """
 
-    def __init__(self, x, values):
-        super(Matching, self).__init__(values, x.matchingGraph)
-        # We store a reference to the State on which we will perform matchings
-        self.x = x
-        # We test if the number of matchings is higher than the number of items in the State
-        if (self.data > x.data).any():
-            raise ValueError(
-                "The number of matched items can't be superior than the number of items in the State at any nodes")
-        if not self.feasible():
-            raise ValueError("This matching is not feasible")
-
-    def feasible(self):
-        feasible_matching = True
-        for subset in self.matchingGraph.demand_class_subsets:
-            if self.demand(np.array(subset)).sum() > self.supply(
-                    np.array(self.matchingGraph.demandToSupply[subset])).sum():
-                feasible_matching = False
-        for subset in self.matchingGraph.supply_class_subsets:
-            if self.supply(np.array(subset)).sum() > self.demand(
-                    np.array(self.matchingGraph.supplyToDemand[subset])).sum():
-                feasible_matching = False
-        return feasible_matching
+    def __init__(self, data: np.array, matching_graph: MatchingGraph):
+        """
+        :param data: Array which stores the data related to each edge. The value at a given index is related to the edge
+            stored at the same index in the matching_graph.edges array.
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
+        assert len(data) == matching_graph.nb_edges
+        self.data = data
+        self.matching_graph = matching_graph
 
     @classmethod
-    def fromDict(cls, x, D):
-        A = np.zeros(x.matchingGraph.n)
-        # The values must be stored in a dictionnary D where the keys are the nodes
-        for node in D.keys():
-            if node not in x.matchingGraph.nodes:
-                raise ValueError('A key from the dictionnary does not corespond to a node of the matching graph')
-            elif node[0] == 'd':
-                A[int(node[1]) - 1] = D[node]
+    def from_dict(cls, data: dict, matching_graph: MatchingGraph):
+        """
+        :param data: Dictionary which stores the data related to each edge. Each key should be an edge in the
+            matching_graph.edges array. If an edge is not in the dictionary keys, then we put a default value of 0.
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
+        data_array = np.zeros(matching_graph.nb_edges)
+        for edge in data.keys():
+            if matching_graph.isEdge(edge):
+                data_array[matching_graph.edgeIndex(edge)] = data[edge]
             else:
-                A[x.matchingGraph.nb_demand_classes + int(node[1]) - 1] = D[node]
-        return cls(x, A)
+                raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
+        return cls(data_array, matching_graph)
 
     @classmethod
-    def zeros(cls, x):
-        # We create an empty state
-        return cls(x, np.zeros(x.matchingGraph.n))
+    def zeros(cls, matching_graph: MatchingGraph):
+        """ Creates an EdgeData with zeros for all edges.
 
-    @classmethod
-    def items(cls, x, demand_items, supply_items):
-        # We create a state by giving two separate array for demand and supply items
-        return cls(x, np.hstack((demand_items, supply_items)))
+        :param matching_graph: MatchingGraph to which this data is related to.
+        """
+        return cls(np.zeros(matching_graph.nb_edges), matching_graph)
 
-    def __setitem__(self, index, value):
-        # We test if the demand class i can be matched with the supply class j
-        if self.matchingGraph.isEdge(index):
-            # We test if the number of matchings has exceed the number of items in the State
-            if (value > self.x[index]).any():
-                raise ValueError(
-                    "The number of matched items can't be superior than the number of items in the State at any nodes")
-            else:
-                super(Matching, self).__setitem__(index, value)
+    def __getitem__(self, edge: Tuple):
+        if self.matching_graph.isEdge(edge):
+            return self.data[self.matching_graph.edgeIndex(edge)]
+        else:
+            raise ValueError("The pair do not correspond to an edge in the matching graph")
+
+    def __setitem__(self, edge: Tuple, value):
+        if self.matching_graph.isEdge(edge):
+            self.data[self.matching_graph.edgeIndex(edge)] = value
         else:
             raise ValueError("The pair do not correspond to an edge in the matching graph")
 
     def copy(self):
-        return Matching(self.x, self.data.copy())
+        return self.__class__(self.data.copy(), self.matching_graph)
+
+    def __str__(self):
+        return str(self.data)
+
+
+# We create a Matching class which is a State with more restrictions.
+# A matching can only add pairs of demand and supply items if they are associated to an edge in the matching graph.
+# A matching has a reference to a State and can't have more items than the referenced State in any nodes.
+class Matching(EdgesData):
+
+    def __init__(self, state: State, values: np.array):
+        """
+        :param state: the State on which is performed the matching.
+        :param values: Numpy Array which stores the number of matchings in each edge. The value at a given index is
+            related to the edge stored at the same index in the State's MatchingGraph.
+        """
+        # We store a reference to the State on which we will perform matchings
+        self.state = state
+        # We use the EdgesData initialization
+        super(Matching, self).__init__(values, state.matchingGraph)
+        # We test that the values for each edge is positive
+        if (self.data < 0).any():
+            raise ValueError("The number of matchings in each edge must be positive.")
+        # We test that the number of items matched is lower than the number of items in the State
+        if np.any(self.to_nodesdata() > state.data):
+            raise ValueError(
+                "The number of matched items can't be superior than the number of items in the State at any nodes")
+
+    @classmethod
+    def fromDict(cls, state: State, values: dict):
+        """
+        :param state: the State on which is performed the matching.
+        :param values: Dictionary which stores the data related to each edge. Each key should be an edge in the
+            matching_graph.edges array. If an edge is not in the dictionary keys, then we put a default value of 0.
+        """
+        values_array = np.zeros(state.matchingGraph.nb_edges)
+        for edge in values.keys():
+            if state.matchingGraph.isEdge(edge):
+                values_array[state.matchingGraph.edgeIndex(edge)] = values[edge]
+            else:
+                raise ValueError('A key from the dictionary does not correspond to an edge of the matching graph')
+        return cls(state, values_array)
+
+    @classmethod
+    def zeros(cls, state: State):
+        """
+        :param state: the State on which is performed the matching.
+        """
+        # We create an empty state
+        return cls(state, np.zeros(state.matchingGraph.nb_edges))
+
+    def to_nodesdata(self):
+        return np.dot(self.matching_graph.edges_to_nodes, self.data)
+
+    def __setitem__(self, edge: Tuple, value):
+        super(Matching, self).__setitem__(edge, value)
+        # We test if the number of matchings has exceed the number of items in the State
+        if np.any(self.to_nodesdata() > self.state.data):
+            raise ValueError(
+                "The number of matched items can't be superior than the number of items in the State at any nodes")
+
+    def copy(self):
+        return Matching(self.state, self.data.copy())
 
 
 # We define a Virtual Matching class which is the same as the Matching class excepts that we allow matchings to be made even if there is not enough items.
