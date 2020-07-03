@@ -269,6 +269,17 @@ class State(NodesData):
                 list_edges.append(edge)
         return list_edges
 
+    def complete_matchings_available(self):
+        matchings_list = []
+        for matchings_numbers in product([range(np.min(self[edge]) + 1) for edge in self.matching_graph.edges]):
+            try:
+                matching = Matching(state=self, values=np.array(matchings_numbers))
+            except ValueError:
+                pass
+            else:
+                matchings_list.append(matching)
+        return matchings_list
+
     def matchings_available_subgraph(self):
         # We construct a subgraph composed of all the edges which can be matched given the State
         return MatchingGraph(self.matchings_available(), self.matching_graph.nb_demand_classes,
@@ -551,12 +562,14 @@ class Virtual_Matching(State):
 class Model:
 
     def __init__(self, matching_graph: MatchingGraph, arrival_dist: NodesData, costs: NodesData, x_0: State,
-                 capacity=np.inf, penalty=0.):
+                 discount=1., capacity=np.inf, penalty=0.):
         self.matching_graph = matching_graph
         # We initialize the class probabilities
         self.arrival_dist = arrival_dist
         # We stores the holding costs
         self.costs = costs
+        # We initialise the discount factor
+        self.discount = discount
         # We initialize the capacity of the system queues and the penalty for going beyond
         self.capacity = capacity
         self.penalty = penalty
