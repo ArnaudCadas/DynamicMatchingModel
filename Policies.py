@@ -18,6 +18,14 @@ class Policy:
 
 # We define various policies by creating child class from Policy and implementing the function match()
 
+class NoMatchings(Policy):
+
+    def match(self, x):
+        return Matching.zeros(x)
+
+    def __str__(self):
+        return "No matchings policy"
+
 # We define a random policy which choose a random possible (depending on the State) matching.
 # The policy has a parameter that gives the maximum number of times we repeat the last operation.
 class Random_policy(Policy):

@@ -69,6 +69,36 @@ def demo_N():
     plt.show()
 
 
+def demo_N_with_capacity():
+    np.random.seed(42)
+    N_graph = Model.MatchingGraph([(1, 1), (1, 2), (2, 2)], 2, 2)
+    epsilon = 0.1
+    alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
+    beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
+    arrival_dist = Model.NodesData.items(alpha, beta, N_graph)
+    costs = Model.NodesData(np.array([10., 1., 1., 10.]), N_graph)
+    P = [Policies.Threshold_N(threshold=3.),
+         Policies.MaxWeight(costs=costs),
+         Policies.NoMatchings()]
+    x0 = Model.State.zeros(N_graph, 10.)
+    test_model = Model.Model(N_graph, arrival_dist, costs, x0, 10., 100.)
+
+    plt.ion()
+
+    res = test_model.run(nb_iter=1000, policies=P, plot=True)
+
+    t = time.time()
+    N = 10000
+    c, x = test_model.average_cost(N, P, plot=True)
+    print(time.time() - t)
+    for i in range(len(P)):
+        print(P[i], ": ", c[i][N])
+
+    plt.ioff()
+    plt.show()
+
+
 if __name__ == "__main__":
-    demo_N()
+    demo_N_with_capacity()
+    # demo_N()
     # demo_W()

@@ -89,6 +89,25 @@ def test_thresholds_with_priorities_str():
     assert str(policy) == 'TwP p={} t={}'.format(matching_order, thresholds)
 
 
+class TestNoMatchings:
+    policy = Policies.NoMatchings()
+
+    def test_match(self):
+        matching_graph = Model.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
+
+        x = Model.State(values=np.array([1., 1., 1., 1.]), matching_graph=matching_graph)
+        u = TestNoMatchings.policy.match(x=x)
+        assert u == Model.Matching(state=x, values=np.array([0., 0., 0.]))
+
+        x = Model.State(values=np.array([4., 0., 2., 2.]), matching_graph=matching_graph)
+        u = TestNoMatchings.policy.match(x=x)
+        assert u == Model.Matching(state=x, values=np.array([0., 0., 0.]))
+
+        x = Model.State(values=np.array([4., 2., 0., 6.]), matching_graph=matching_graph)
+        u = TestNoMatchings.policy.match(x=x)
+        assert u == Model.Matching(state=x, values=np.array([0., 0., 0.]))
+
+
 class TestThresholdN:
     policy = Policies.Threshold_N(threshold=3.)
 
