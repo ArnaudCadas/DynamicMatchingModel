@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 
 import MatchingModel as Model
+import Policies as Policies
 
 
 class TestMatchingGraph:
@@ -86,43 +87,43 @@ class TestMatchingGraph:
 
 
 class TestNodesData:
-    N_nodes = Model.NodesData(data=np.array([5, 3, 3, 5]), matchingGraph=TestMatchingGraph.N_graph)
+    N_nodes = Model.NodesData(data=np.array([5, 3, 3, 5]), matching_graph=TestMatchingGraph.N_graph)
 
     def test_init(self):
         data = np.array([5, 3, 3, 5])
-        matchingGraph = TestMatchingGraph.N_graph
-        N_nodes = Model.NodesData(data=data, matchingGraph=matchingGraph)
+        matching_graph = TestMatchingGraph.N_graph
+        N_nodes = Model.NodesData(data=data, matching_graph=matching_graph)
 
         assert np.all(N_nodes.data == data)
-        assert N_nodes.matchingGraph == matchingGraph
+        assert N_nodes.matching_graph == matching_graph
 
     def test_fromDict(self):
         data_dict = {'d1': 5, 'd2': 3, 's1': 3, 's2': 5}
         data = np.array([5, 3, 3, 5])
-        matchingGraph = TestMatchingGraph.N_graph
-        N_nodes = Model.NodesData.fromDict(data=data_dict, matchingGraph=matchingGraph)
+        matching_graph = TestMatchingGraph.N_graph
+        N_nodes = Model.NodesData.fromDict(data=data_dict, matching_graph=matching_graph)
 
         assert np.all(N_nodes.data == data)
-        assert N_nodes.matchingGraph == matchingGraph
+        assert N_nodes.matching_graph == matching_graph
 
     def test_zeros(self):
         data = np.zeros(4)
-        matchingGraph = TestMatchingGraph.N_graph
-        N_nodes = Model.NodesData.zeros(matchingGraph=matchingGraph)
+        matching_graph = TestMatchingGraph.N_graph
+        N_nodes = Model.NodesData.zeros(matching_graph=matching_graph)
 
         assert np.all(N_nodes.data == data)
-        assert N_nodes.matchingGraph == matchingGraph
+        assert N_nodes.matching_graph == matching_graph
 
     def test_items(self):
         demand_items = np.array([5, 3])
         supply_items = np.array([3, 5])
         data = np.hstack((demand_items, supply_items))
-        matchingGraph = TestMatchingGraph.N_graph
+        matching_graph = TestMatchingGraph.N_graph
         N_nodes = Model.NodesData.items(demand_items=demand_items, supply_items=supply_items,
-                                        matchingGraph=matchingGraph)
+                                        matching_graph=matching_graph)
 
         assert np.all(N_nodes.data == data)
-        assert N_nodes.matchingGraph == matchingGraph
+        assert N_nodes.matching_graph == matching_graph
 
     def test_demand(self):
         assert TestNodesData.N_nodes.demand(np.array([1])) == np.array([5])
@@ -149,23 +150,25 @@ class TestNodesData:
         assert np.all(N_nodes_copy.data == np.array([-7, 4, 18, -9]))
 
     def test_add(self):
-        N_nodes_a = Model.NodesData(data=np.array([5, 3, 3, 5]), matchingGraph=TestMatchingGraph.N_graph)
-        N_nodes_b = Model.NodesData(data=np.array([-5, 4, -8, -1]), matchingGraph=TestMatchingGraph.N_graph)
-        N_nodes_sum = Model.NodesData(data=np.array([0, 7, -5, 4]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes_a = Model.NodesData(data=np.array([5, 3, 3, 5]), matching_graph=TestMatchingGraph.N_graph)
+        N_nodes_b = Model.NodesData(data=np.array([-5, 4, -8, -1]), matching_graph=TestMatchingGraph.N_graph)
+        N_nodes_sum = Model.NodesData(data=np.array([0, 7, -5, 4]), matching_graph=TestMatchingGraph.N_graph)
 
         assert N_nodes_sum == N_nodes_a + N_nodes_b
 
     def test_iadd(self):
-        N_nodes_a = Model.NodesData(data=np.array([5, 3, 3, 5]), matchingGraph=TestMatchingGraph.N_graph)
-        N_nodes_b = Model.NodesData(data=np.array([-5, 4, -8, -1]), matchingGraph=TestMatchingGraph.N_graph)
-        N_nodes_sum = Model.NodesData(data=np.array([0, 7, -5, 4]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes_a = Model.NodesData(data=np.array([5, 3, 3, 5]), matching_graph=TestMatchingGraph.N_graph)
+        N_nodes_b = Model.NodesData(data=np.array([-5, 4, -8, -1]), matching_graph=TestMatchingGraph.N_graph)
+        N_nodes_sum = Model.NodesData(data=np.array([0, 7, -5, 4]), matching_graph=TestMatchingGraph.N_graph)
 
         N_nodes_a += N_nodes_b
         assert N_nodes_sum == N_nodes_a
 
     def test_eq(self):
-        N_nodes_a = Model.NodesData(data=np.array([5, 3, 3, 5]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes_a = Model.NodesData(data=np.array([5, 3, 3, 5]), matching_graph=TestMatchingGraph.N_graph)
 
+        assert np.all(TestNodesData.N_nodes.data == N_nodes_a.data)
+        assert TestNodesData.N_nodes.matching_graph == N_nodes_a.matching_graph
         assert TestNodesData.N_nodes == N_nodes_a
 
     def test_copy(self):
@@ -176,37 +179,47 @@ class TestNodesData:
 
 
 class TestState:
-    N_state = Model.State(values=np.array([5., 3., 3., 5.]), matchingGraph=TestMatchingGraph.N_graph)
+    N_state = Model.State(values=np.array([5., 3., 3., 5.]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
 
     def test_init(self):
         values_a = np.array([5, 3, 3, 5])
         matchingGraph = TestMatchingGraph.N_graph
-        N_state_a = Model.State(values=values_a, matchingGraph=matchingGraph)
+        N_state_a = Model.State(values=values_a, matching_graph=matchingGraph)
 
         assert np.all(N_state_a.data == values_a)
-        assert N_state_a.matchingGraph == matchingGraph
+        assert N_state_a.matching_graph == matchingGraph
+        assert N_state_a.capacity == np.inf
+
+        capacity = 10
+        N_state_b = Model.State(values=values_a, matching_graph=matchingGraph, capacity=capacity)
+
+        assert N_state_b.capacity == capacity
 
         values_b = np.array([-2, 3, 3, 5])
         with pytest.raises(ValueError):
-            _ = Model.State(values=values_b, matchingGraph=matchingGraph)
+            _ = Model.State(values=values_b, matching_graph=matchingGraph)
 
         values_c = np.array([2, 3, 3, 5])
         with pytest.raises(ValueError):
-            _ = Model.State(values=values_c, matchingGraph=matchingGraph)
+            _ = Model.State(values=values_c, matching_graph=matchingGraph)
+
+        values_d = np.array([11, 3, 3, 11])
+        with pytest.raises(ValueError):
+            _ = Model.State(values=values_d, matching_graph=matchingGraph, capacity=capacity)
 
     def test_matchings_available(self):
         matchings = [(1, 1), (1, 2), (2, 2)]
         assert np.all(TestState.N_state.matchings_available() == matchings)
 
-        N_state_a = Model.State(values=np.array([5, 0, 5, 0]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_a = Model.State(values=np.array([5, 0, 5, 0]), matching_graph=TestMatchingGraph.N_graph)
         matchings_a = [(1, 1)]
         assert np.all(N_state_a.matchings_available() == matchings_a)
 
-        N_state_b = Model.State(values=np.array([5, 0, 0, 5]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_b = Model.State(values=np.array([5, 0, 0, 5]), matching_graph=TestMatchingGraph.N_graph)
         matchings_b = [(1, 2)]
         assert np.all(N_state_b.matchings_available() == matchings_b)
 
-        N_state_c = Model.State(values=np.array([2, 3, 0, 5]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_c = Model.State(values=np.array([2, 3, 0, 5]), matching_graph=TestMatchingGraph.N_graph)
         matchings_c = [(1, 2), (2, 2)]
         assert np.all(N_state_c.matchings_available() == matchings_c)
 
@@ -215,78 +228,135 @@ class TestState:
                                                  nb_supply_classes=2)
         assert TestState.N_state.matchings_available_subgraph() == matchings_subgraph
 
-        N_state_a = Model.State(values=np.array([5, 0, 5, 0]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_a = Model.State(values=np.array([5, 0, 5, 0]), matching_graph=TestMatchingGraph.N_graph)
         matchings_subgraph_a = Model.MatchingGraph(edges=[(1, 1)], nb_demand_classes=2, nb_supply_classes=2)
         assert np.all(N_state_a.matchings_available_subgraph() == matchings_subgraph_a)
 
-        N_state_b = Model.State(values=np.array([5, 0, 0, 5]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_b = Model.State(values=np.array([5, 0, 0, 5]), matching_graph=TestMatchingGraph.N_graph)
         matchings_subgraph_b = Model.MatchingGraph(edges=[(1, 2)], nb_demand_classes=2, nb_supply_classes=2)
         assert np.all(N_state_b.matchings_available_subgraph() == matchings_subgraph_b)
 
-        N_state_c = Model.State(values=np.array([2, 3, 0, 5]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_c = Model.State(values=np.array([2, 3, 0, 5]), matching_graph=TestMatchingGraph.N_graph)
         matchings_subgraph_c = Model.MatchingGraph(edges=[(1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
         assert np.all(N_state_c.matchings_available_subgraph() == matchings_subgraph_c)
 
+    def test_setitem(self):
+        N_state_copy = TestState.N_state.copy()
+        N_state_copy[1, 1] = np.array([4, 8])
+        assert np.all(N_state_copy.data == np.array([4, 3, 8, 5]))
+        N_state_copy[1, 2] = np.array([7, 2])
+        assert np.all(N_state_copy.data == np.array([7, 3, 8, 2]))
+        N_state_copy[2, 2] = np.array([4, 9])
+        assert np.all(N_state_copy.data == np.array([7, 4, 8, 9]))
+
+        with pytest.raises(ValueError):
+            N_state_copy[2, 2] = np.array([-3, 2])
+        with pytest.raises(ValueError):
+            N_state_copy[1, 2] = np.array([1, 11])
+
     def test_add(self):
-        N_state_a = Model.State(values=np.array([5, 3, 3, 5]), matchingGraph=TestMatchingGraph.N_graph)
-        N_state_b = Model.State(values=np.array([1, 2, 2, 1]), matchingGraph=TestMatchingGraph.N_graph)
-        N_state_sum = Model.State(values=np.array([6, 5, 5, 6]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_a = Model.State(values=np.array([5, 3, 3, 5]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
+        N_state_b = Model.State(values=np.array([1, 2, 2, 1]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
+        N_state_sum = Model.State(values=np.array([6, 5, 5, 6]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
 
         assert N_state_sum == N_state_a + N_state_b
 
-        N_nodes_b = Model.NodesData(data=np.array([1, 2, 2, 1]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes_b = Model.NodesData(data=np.array([1, 2, 2, 1]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_a + N_nodes_b
         with pytest.raises(TypeError):
             N_nodes_b + N_state_a
+        with pytest.raises(ValueError):
+            N_state_a + N_state_sum
+
+        W_graph = Model.MatchingGraph(edges=[(1, 1), (2, 1), (2, 2), (3, 2)], nb_demand_classes=3, nb_supply_classes=2)
+        N_state_c = Model.State(values=np.array([1, 2, 1, 2, 2]), matching_graph=W_graph, capacity=10)
+        with pytest.raises(AssertionError):
+            N_state_a + N_state_c
+        N_state_d = Model.State(values=np.array([1, 2, 2, 1]), matching_graph=TestMatchingGraph.N_graph, capacity=5)
+        with pytest.raises(AssertionError):
+            N_state_a + N_state_d
 
     def test_iadd(self):
-        N_state_a = Model.State(values=np.array([5, 3, 3, 5]), matchingGraph=TestMatchingGraph.N_graph)
-        N_state_b = Model.State(values=np.array([1, 2, 2, 1]), matchingGraph=TestMatchingGraph.N_graph)
-        N_state_sum = Model.State(values=np.array([6, 5, 5, 6]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_a = Model.State(values=np.array([5, 3, 3, 5]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
+        N_state_b = Model.State(values=np.array([1, 2, 2, 1]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
+        N_state_sum = Model.State(values=np.array([6, 5, 5, 6]), matching_graph=TestMatchingGraph.N_graph, capacity=10)
 
         N_state_a += N_state_b
         assert N_state_sum == N_state_a
 
-        N_nodes_b = Model.NodesData(data=np.array([1, 2, 2, 1]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes_b = Model.NodesData(data=np.array([1, 2, 2, 1]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_a += N_nodes_b
+        with pytest.raises(ValueError):
+            N_state_a += N_state_sum
+
+        W_graph = Model.MatchingGraph(edges=[(1, 1), (2, 1), (2, 2), (3, 2)], nb_demand_classes=3, nb_supply_classes=2)
+        N_state_c = Model.State(values=np.array([1, 2, 1, 2, 2]), matching_graph=W_graph, capacity=10)
+        with pytest.raises(AssertionError):
+            N_state_a += N_state_c
+        N_state_d = Model.State(values=np.array([1, 2, 2, 1]), matching_graph=TestMatchingGraph.N_graph, capacity=5)
+        with pytest.raises(AssertionError):
+            N_state_a += N_state_d
 
     def test_sub(self):
         N_state_copy = TestState.N_state.copy()
         N_matching = Model.Matching(state=N_state_copy, values=np.array([1., 1., 1.]))
-        N_state_diff = Model.State(values=np.array([3., 2., 2., 3.]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_diff = Model.State(values=np.array([3., 2., 2., 3.]), matching_graph=TestMatchingGraph.N_graph)
 
         assert N_state_diff == N_state_copy - N_matching
 
-        N_nodes = Model.NodesData(data=np.array([2., 1., 1., 2.]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes = Model.NodesData(data=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_copy - N_nodes
-        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_copy - N_state_b
+
+        W_graph = Model.MatchingGraph(edges=[(1, 1), (2, 1), (2, 2), (3, 2)], nb_demand_classes=3, nb_supply_classes=2)
+        W_state = Model.State(values=np.array([1., 2., 1., 2., 2.]), matching_graph=W_graph)
+        W_matching = Model.Matching(state=W_state, values=np.array([1., 1., 1., 1.]))
+        with pytest.raises(AssertionError):
+            N_state_copy - W_matching
 
     def test_isub(self):
         N_state_copy = TestState.N_state.copy()
         N_matching = Model.Matching(state=N_state_copy, values=np.array([1., 1., 1.]))
-        N_state_diff = Model.State(values=np.array([3., 2., 2., 3.]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_diff = Model.State(values=np.array([3., 2., 2., 3.]), matching_graph=TestMatchingGraph.N_graph,
+                                   capacity=10)
 
         N_state_copy -= N_matching
         assert N_state_diff == N_state_copy
 
-        N_nodes = Model.NodesData(data=np.array([2., 1., 1., 2.]), matchingGraph=TestMatchingGraph.N_graph)
+        N_nodes = Model.NodesData(data=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_copy -= N_nodes
-        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matchingGraph=TestMatchingGraph.N_graph)
+        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_copy -= N_state_b
 
-    def test_eq(self):
-        N_state_a = Model.State(values=np.array([5., 3., 3., 5.]), matchingGraph=TestMatchingGraph.N_graph)
-        N_nodes_a = Model.NodesData(data=np.array([5., 3., 3., 5.]), matchingGraph=TestMatchingGraph.N_graph)
+        W_graph = Model.MatchingGraph(edges=[(1, 1), (2, 1), (2, 2), (3, 2)], nb_demand_classes=3, nb_supply_classes=2)
+        W_state = Model.State(values=np.array([1., 2., 1., 2., 2.]), matching_graph=W_graph)
+        W_matching = Model.Matching(state=W_state, values=np.array([1., 1., 1., 1.]))
+        with pytest.raises(AssertionError):
+            N_state_copy -= W_matching
 
+    def test_eq(self):
+        N_state_a = Model.State(values=np.array([5., 3., 3., 5.]), matching_graph=TestMatchingGraph.N_graph,
+                                capacity=10)
+        N_nodes_a = Model.NodesData(data=np.array([5., 3., 3., 5.]), matching_graph=TestMatchingGraph.N_graph)
+
+        assert np.all(TestState.N_state.data == N_state_a.data)
+        assert TestState.N_state.matching_graph == N_state_a.matching_graph
+        assert TestState.N_state.capacity == N_state_a.capacity
         assert TestState.N_state == N_state_a
         assert not TestState.N_state == N_nodes_a
+
+    def test_copy(self):
+        N_state_copy = TestState.N_state.copy()
+
+        assert TestState.N_state == N_state_copy
+        assert TestState.N_state.data is not N_state_copy.data
 
 
 class TestEdgesData:
@@ -407,7 +477,7 @@ class TestMatching:
 
         assert N_matching_a.state == TestState.N_state
         assert np.all(N_matching_a.data == values_a)
-        assert N_matching_a.matching_graph == TestState.N_state.matchingGraph
+        assert N_matching_a.matching_graph == TestState.N_state.matching_graph
 
         values_b = np.array([-2., 1., 1.])
         with pytest.raises(ValueError):
@@ -495,3 +565,53 @@ class TestMatching:
 
         assert TestMatching.N_matching == N_matching_copy
         assert TestMatching.N_matching.data is not N_matching_copy.data
+
+
+class TestModel:
+    N_model = Model.Model(matching_graph=TestMatchingGraph.N_graph,
+                          arrival_dist=Model.NodesData.items(demand_items=np.array([0.6, 0.4]),
+                                                             supply_items=np.array([0.4, 0.6]),
+                                                             matching_graph=TestMatchingGraph.N_graph),
+                          costs=Model.NodesData(data=np.ones(4), matching_graph=TestMatchingGraph.N_graph),
+                          x_0=Model.State.zeros(matching_graph=TestMatchingGraph.N_graph))
+
+    def test_init(self):
+        matching_graph = TestMatchingGraph.N_graph
+        alpha = np.array([0.6, 0.4])
+        beta = np.array([0.4, 0.6])
+        arrival_dist = Model.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=matching_graph)
+        costs = Model.NodesData(data=np.ones(4), matching_graph=matching_graph)
+        x_0 = Model.State.zeros(matching_graph=matching_graph)
+        N_model_a = Model.Model(matching_graph=matching_graph, arrival_dist=arrival_dist, costs=costs, x_0=x_0)
+
+        assert N_model_a.matching_graph == matching_graph
+        assert N_model_a.arrival_dist == arrival_dist
+        assert N_model_a.costs == costs
+        assert N_model_a.x_0 == x_0
+
+    def test_sample_arrivals(self):
+        N = 10000.
+        total_arrivals = Model.State.zeros(TestModel.N_model.matching_graph)
+        for _ in np.arange(N):
+            arrivals = TestModel.N_model.sample_arrivals()
+            total_arrivals += arrivals
+        mean_arrivals = total_arrivals.data / N
+
+        assert np.allclose(mean_arrivals, TestModel.N_model.arrival_dist.data, atol=1e-2)
+
+    def test_iterate(self):
+        # costs = Model.NodesData(data=np.array([3., 1., 2., 3.]), matching_graph=TestMatchingGraph.N_graph)
+        # policies = [Policies.Threshold_N(threshold=3), Policies.MaxWeight(costs=costs)]
+        # states_list = []
+        # # We initialize each state to the initial state of the model x_0 and reset each policy
+        # for policy in policies:
+        #     states_list.append(TestModel.N_model.x_0.copy())
+        #     policy.reset_policy(TestModel.N_model.x_0)
+        #
+        # states_list = TestModel.N_model.iterate(states_list=states_list, policies=policies)
+        # state_threshold_a = Model.State(values=np.array([0., 0.]))
+        # assert np.all(states_list == [])
+        pass
+
+    def test_run(self):
+        pass
