@@ -1,12 +1,14 @@
 import numpy as np
 import mipcl_py.mipshell.mipshell as mip
 from MatchingModel import *
+import ReinforcementLearning as RL
 
 
+# TODO: Change the inheritance of all policies to the respective Policy class based on state space
 # We define a class for policies
 class Policy:
 
-    def match(self, x):
+    def match(self, *args, **kwargs):
         raise NotImplementedError
 
     def reset_policy(self, x_0):
@@ -14,6 +16,18 @@ class Policy:
 
     def __str__(self):
         pass
+
+
+class PolicyOnState(Policy):
+
+    def match(self, state: State):
+        raise NotImplementedError
+
+
+class PolicyOnStateAndArrivals(Policy):
+
+    def match(self, state: State, arrivals: State):
+        raise NotImplementedError
 
 
 # We define various policies by creating child class from Policy and implementing the function match()
@@ -25,6 +39,32 @@ class NoMatchings(Policy):
 
     def __str__(self):
         return "No matchings policy"
+
+
+class ValueIterationOptimal(PolicyOnStateAndArrivals):
+
+    def __init__(self, model: Model, nb_iterations=None):
+        self.model = model
+        self.value_iteration = RL.ValueIteration(model=self.model)
+
+        print("The value iteration algorithm starts. Beware, it can be very long.")
+        self.value_iteration.run(nb_iterations=nb_iterations)
+
+    def match(self, state: State, arrivals: State):
+        if np.any(state.data + arrivals.data > self.model.capacity):
+            new_state = state.copy()
+        else:
+            new_state = state + arrivals
+        matchings_available = new_state.complete_matchings_available()
+        res_for_all_matchings = np.zeros(len(matchings_available))
+        for i, matching in enumerate(matchings_available):
+            res_for_all_matchings[i] = self.value_iteration.bellman_operator_with_matching(
+                state=state, arrivals=arrivals, matching=matching)
+        return matchings_available[np.argmin(res_for_all_matchings)]
+
+    def __str__(self):
+        return "Optimal policy from Value Iteration"
+
 
 # We define a random policy which choose a random possible (depending on the State) matching.
 # The policy has a parameter that gives the maximum number of times we repeat the last operation.

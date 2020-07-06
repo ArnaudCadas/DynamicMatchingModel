@@ -302,19 +302,21 @@ class TestState:
     def test_sub(self):
         N_state_copy = TestState.N_state.copy()
         N_matching = Model.Matching(state=N_state_copy, values=np.array([1., 1., 1.]))
-        N_state_diff = Model.State(values=np.array([3., 2., 2., 3.]), matching_graph=TestMatchingGraph.N_graph)
+        N_state_diff = Model.State(values=np.array([3., 2., 2., 3.]), matching_graph=TestMatchingGraph.N_graph,
+                                   capacity=10.)
 
         assert N_state_diff == N_state_copy - N_matching
 
         N_nodes = Model.NodesData(data=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_copy - N_nodes
-        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
+        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph,
+                                capacity=10.)
         with pytest.raises(TypeError):
             N_state_copy - N_state_b
 
         W_graph = Model.MatchingGraph(edges=[(1, 1), (2, 1), (2, 2), (3, 2)], nb_demand_classes=3, nb_supply_classes=2)
-        W_state = Model.State(values=np.array([1., 2., 1., 2., 2.]), matching_graph=W_graph)
+        W_state = Model.State(values=np.array([1., 2., 1., 2., 2.]), matching_graph=W_graph, capacity=10.)
         W_matching = Model.Matching(state=W_state, values=np.array([1., 1., 1., 1.]))
         with pytest.raises(AssertionError):
             N_state_copy - W_matching
@@ -331,12 +333,13 @@ class TestState:
         N_nodes = Model.NodesData(data=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
         with pytest.raises(TypeError):
             N_state_copy -= N_nodes
-        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph)
+        N_state_b = Model.State(values=np.array([2., 1., 1., 2.]), matching_graph=TestMatchingGraph.N_graph,
+                                capacity=10.)
         with pytest.raises(TypeError):
             N_state_copy -= N_state_b
 
         W_graph = Model.MatchingGraph(edges=[(1, 1), (2, 1), (2, 2), (3, 2)], nb_demand_classes=3, nb_supply_classes=2)
-        W_state = Model.State(values=np.array([1., 2., 1., 2., 2.]), matching_graph=W_graph)
+        W_state = Model.State(values=np.array([1., 2., 1., 2., 2.]), matching_graph=W_graph, capacity=10.)
         W_matching = Model.Matching(state=W_state, values=np.array([1., 1., 1., 1.]))
         with pytest.raises(AssertionError):
             N_state_copy -= W_matching
@@ -568,12 +571,13 @@ class TestMatching:
 
 
 class TestModel:
+    # TODO: do more tests based on the modification to state space and discounted costs.
     N_model = Model.Model(matching_graph=TestMatchingGraph.N_graph,
                           arrival_dist=Model.NodesData.items(demand_items=np.array([0.6, 0.4]),
                                                              supply_items=np.array([0.4, 0.6]),
                                                              matching_graph=TestMatchingGraph.N_graph),
                           costs=Model.NodesData(data=np.ones(4), matching_graph=TestMatchingGraph.N_graph),
-                          x_0=Model.State.zeros(matching_graph=TestMatchingGraph.N_graph))
+                          init_state=Model.State.zeros(matching_graph=TestMatchingGraph.N_graph), state_space="state")
 
     def test_init(self):
         matching_graph = TestMatchingGraph.N_graph
@@ -581,13 +585,14 @@ class TestModel:
         beta = np.array([0.4, 0.6])
         arrival_dist = Model.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=matching_graph)
         costs = Model.NodesData(data=np.ones(4), matching_graph=matching_graph)
-        x_0 = Model.State.zeros(matching_graph=matching_graph)
-        N_model_a = Model.Model(matching_graph=matching_graph, arrival_dist=arrival_dist, costs=costs, x_0=x_0)
+        init_state = Model.State.zeros(matching_graph=matching_graph)
+        N_model_a = Model.Model(matching_graph=matching_graph, arrival_dist=arrival_dist, costs=costs,
+                                init_state=init_state, state_space="state")
 
         assert N_model_a.matching_graph == matching_graph
         assert N_model_a.arrival_dist == arrival_dist
         assert N_model_a.costs == costs
-        assert N_model_a.x_0 == x_0
+        assert N_model_a.init_state == init_state
 
     def test_sample_arrivals(self):
         N = 10000.
@@ -597,16 +602,16 @@ class TestModel:
             total_arrivals += arrivals
         mean_arrivals = total_arrivals.data / N
 
-        assert np.allclose(mean_arrivals, TestModel.N_model.arrival_dist.data, atol=1e-2)
+        assert np.allclose(mean_arrivals, TestModel.N_model.arrival_dist.data, atol=1e-1)
 
     def test_iterate(self):
         # costs = Model.NodesData(data=np.array([3., 1., 2., 3.]), matching_graph=TestMatchingGraph.N_graph)
         # policies = [Policies.Threshold_N(threshold=3), Policies.MaxWeight(costs=costs)]
         # states_list = []
-        # # We initialize each state to the initial state of the model x_0 and reset each policy
+        # # We initialize each state to the initial state of the model init_state and reset each policy
         # for policy in policies:
-        #     states_list.append(TestModel.N_model.x_0.copy())
-        #     policy.reset_policy(TestModel.N_model.x_0)
+        #     states_list.append(TestModel.N_model.init_state.copy())
+        #     policy.reset_policy(TestModel.N_model.init_state)
         #
         # states_list = TestModel.N_model.iterate(states_list=states_list, policies=policies)
         # state_threshold_a = Model.State(values=np.array([0., 0.]))
