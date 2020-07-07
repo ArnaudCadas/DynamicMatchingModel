@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations, chain, product
-from typing import Tuple
+from typing import Tuple, List
+
+# import po as po
 
 
 class MatchingGraph:
@@ -269,6 +271,17 @@ class State(NodesData):
                 list_edges.append(edge)
         return list_edges
 
+    def complete_matchings_available(self):
+        matchings_list = []
+        for matchings_numbers in product(*[np.arange(int(np.min(self[edge])) + 1) for edge in self.matching_graph.edges]):
+            try:
+                matching = Matching(state=self, values=np.array(matchings_numbers))
+            except ValueError:
+                pass
+            else:
+                matchings_list.append(matching)
+        return matchings_list
+
     def matchings_available_subgraph(self):
         # We construct a subgraph composed of all the edges which can be matched given the State
         return MatchingGraph(self.matchings_available(), self.matching_graph.nb_demand_classes,
@@ -284,7 +297,7 @@ class State(NodesData):
     def __add__(self, other):
         if type(other) == State:
             assert self.matching_graph == other.matching_graph and self.capacity == other.capacity
-            _sum = State(self.data + other.data, self.matching_graph, self.capacity)
+            _sum = State(values=self.data + other.data, matching_graph=self.matching_graph, capacity=self.capacity)
             if np.any(_sum.data > _sum.capacity):
                 raise ValueError(
                     "The number of demand items and the number of supply items must be less than capacity.")
@@ -304,7 +317,8 @@ class State(NodesData):
     def __sub__(self, other):
         if isinstance(other, Matching):
             assert self.matching_graph == other.matching_graph
-            return State(self.data - other.to_nodesdata(), self.matching_graph)
+            return State(values=self.data - other.to_nodesdata(), matching_graph=self.matching_graph,
+                         capacity=self.capacity)
         else:
             raise TypeError("Items from a State can only be substracted with a Matching")
 
@@ -323,7 +337,7 @@ class State(NodesData):
         return NotImplemented
 
     def copy(self):
-        return self.__class__(self.data.copy(), self.matching_graph, self.capacity)
+        return State(values=self.data.copy(), matching_graph=self.matching_graph, capacity=self.capacity)
 
 
 # We define a class Virtual State that acts as a State excepts that we allow negative values.
@@ -550,19 +564,34 @@ class Virtual_Matching(State):
 
 class Model:
 
-    def __init__(self, matching_graph: MatchingGraph, arrival_dist: NodesData, costs: NodesData, x_0: State,
-                 capacity=np.inf, penalty=0.):
+    def __init__(self, matching_graph: MatchingGraph, arrival_dist: NodesData, costs: NodesData, init_state: State,
+                 state_space: str, init_arrival=None, discount=1., capacity=np.inf, penalty=0.):
         self.matching_graph = matching_graph
         # We initialize the class probabilities
         self.arrival_dist = arrival_dist
         # We stores the holding costs
         self.costs = costs
+        # We initialise the discount factor
+        self.discount = discount
         # We initialize the capacity of the system queues and the penalty for going beyond
         self.capacity = capacity
         self.penalty = penalty
+        # We set up the functions and the initial state based on the type of state space
+        assert state_space == "state" or state_space == "state_with_arrival"
+        self.state_space = state_space
+        if self.state_space == "state_with_arrival":
+            if init_arrival is None:
+                self.init_arrival = self.sample_arrivals()
+            else:
+                self.init_arrival = init_arrival
+                assert self.matching_graph == init_arrival.matching_graph and self.capacity == init_arrival.capacity
         # We initialize the state of the system (the length of each queue)
-        self.x_0 = x_0
-        assert self.capacity == self.x_0.capacity
+        self.init_state = init_state
+        # We assert that every NodesData has the same matching graph and that every State has the same capacity
+        for nodes_data in [self.arrival_dist, self.costs, self.init_state]:
+            assert self.matching_graph == nodes_data.matching_graph
+            if type(nodes_data) == State:
+                assert self.capacity == nodes_data.capacity
 
     def sample_arrivals(self):
         a = State.zeros(self.matching_graph, self.capacity)
@@ -575,32 +604,55 @@ class Model:
         a[d, s] += 1
         return a
 
-    def iterate(self, states_list, policies):
-        penalty_list = np.zeros(len(policies))
+    def iterate_state(self, states_list, policies):
+        costs_list = np.zeros(len(policies))
         # We sample new arrivals
         arrivals = self.sample_arrivals()
         for p, policy in enumerate(policies):
+            # We compute costs
+            costs_list[p] = np.dot(states_list[p].data, self.costs.data)
             # We apply the matchings
             states_list[p] -= policy.match(states_list[p])
             # We test if we get above capacity with new arrivals
             if np.any(states_list[p].data + arrivals.data > self.capacity):
                 # If we do, we don't add the arrivals and induce a penalty
-                penalty_list[p] = self.penalty
+                costs_list[p] += self.penalty
             else:
                 # If not, we add the arrivals and no penalty is induced
                 states_list[p] += arrivals
-        return states_list, penalty_list
+        return states_list, costs_list
+
+    def iterate_state_with_arrival(self, states_list, arrivals, policies):
+        costs_list = np.zeros(len(policies))
+        for p, policy in enumerate(policies):
+            # We test if we get above capacity with new arrivals
+            if np.any(states_list[p].data + arrivals.data > self.capacity):
+                # If we do, we set the arrivals to zero and induce a penalty
+                arrivals = State.zeros(matching_graph=self.matching_graph, capacity=self.capacity)
+                costs_list[p] = self.penalty
+
+            # We compute the matchings
+            matchings = policy.match(state=states_list[p], arrivals=arrivals)
+            # We add the arrivals
+            states_list[p] += arrivals
+            # We compute the costs
+            costs_list[p] += np.dot(states_list[p].data, self.costs.data)
+            # We apply the matchings
+            states_list[p] -= matchings
+        # We sample new arrivals
+        arrivals = self.sample_arrivals()
+        return states_list, arrivals, costs_list
 
     def run(self, nb_iter, policies, traj=False, plot=False):
         nb_policies = len(policies)
         # states_list stores the state of the system under each policy given by the list policies
         states_list = []
-        penalty_list = []
-        # We initialize each state to the initial state of the model x_0 and reset each policy
+        costs_list = []
+        # We initialize each state to the initial state of the model init_state and reset each policy
         for policy in policies:
-            states_list.append(self.x_0.copy())
-            penalty_list.append(0.)
-            policy.reset_policy(self.x_0)
+            states_list.append(self.init_state.copy())
+            policy.reset_policy(self.init_state.copy())
+        arrivals = self.init_arrival.copy()
 
         if plot:
             traj = True
@@ -608,13 +660,19 @@ class Model:
             # We keep the trajectory of the system under each policy
             state_size = self.matching_graph.n
             state_trajectories = np.zeros((nb_policies, state_size, nb_iter + 1))
-            penalty_trajectory = np.zeros((nb_policies, nb_iter + 1))
-            state_trajectories[:, :, 0] = self.x_0.data
-            for i in np.arange(nb_iter):
-                states_list, penalty_list = self.iterate(states_list, policies)
-                state_trajectories[:, :, i + 1] = [state.data for state in states_list]
-                penalty_trajectory[:, i + 1] = penalty_list
-
+            costs_trajectory = np.zeros((nb_policies, nb_iter + 1))
+            state_trajectories[:, :, 0] = self.init_state.data
+            if self.state_space == "state":
+                for i in np.arange(nb_iter):
+                    states_list, costs_list = self.iterate_state(states_list, policies)
+                    state_trajectories[:, :, i + 1] = [state.data for state in states_list]
+                    costs_trajectory[:, i + 1] = [costs for costs in costs_list]
+            else:
+                for i in np.arange(nb_iter):
+                    states_list, arrivals, costs_list = self.iterate_state_with_arrival(states_list, arrivals,
+                                                                                        policies)
+                    state_trajectories[:, :, i + 1] = [state.data for state in states_list]
+                    costs_trajectory[:, i + 1] = [costs for costs in costs_list]
             if plot:
                 # plt.ion()
                 # We plot the trajectories
@@ -629,40 +687,57 @@ class Model:
                 fig.canvas.draw()
                 plt.pause(0.1)
                 fig.canvas.flush_events()
-            return state_trajectories, penalty_trajectory
+            return state_trajectories, costs_trajectory
         else:
-            for _ in np.arange(nb_iter):
-                states_list, penalty_list = self.iterate(states_list, policies)
-            return states_list, penalty_list
+            if self.state_space == "state":
+                for _ in np.arange(nb_iter):
+                    states_list, costs_list = self.iterate_state(states_list, policies)
+            else:
+                for _ in np.arange(nb_iter):
+                    states_list, arrivals, costs_list = self.iterate_state_with_arrival(states_list, arrivals,
+                                                                                        policies)
+            return states_list, costs_list
 
     def average_cost(self, nb_iter, policies, plot=False):
-        x_traj, penalty_traj = self.run(nb_iter, policies, traj=True)
-        costs_traj = [np.cumsum(np.dot(self.costs.data.reshape(1, -1),
-                                       x_traj[i, :, :])) / np.arange(1., nb_iter + 2) for i in np.arange(len(policies))]
-        penalty_traj = np.array([np.cumsum(penalty_traj[i, :]) / np.arange(1., nb_iter + 2) for i in np.arange(len(policies))])
-        total_costs_traj = np.array(costs_traj) + penalty_traj
+        x_traj, costs_traj = self.run(nb_iter, policies, traj=True)
         if plot:
             # plt.ion()
             # We plot the costs trajectory
-            fig, ax = plt.subplots(3, 1, figsize=(15, 15))
+            fig, ax = plt.subplots(1, 1, figsize=(15, 5))
             linestyles = ['-', '--', '-^', ':']
             for p, policy in enumerate(policies):
-                ax[0].plot(costs_traj[p], linestyles[p], label=str(policy), markevery=int(nb_iter / 10.))
-            ax[0].legend(loc='best')
-            ax[0].set_ylabel('Average (state) cost')
-
-            for p, policy in enumerate(policies):
-                ax[1].plot(penalty_traj[p], linestyles[p], label=str(policy), markevery=int(nb_iter / 10.))
-            ax[1].legend(loc='best')
-            ax[1].set_ylabel('Average (penalty) cost')
-
-            for p, policy in enumerate(policies):
-                ax[2].plot(total_costs_traj[p], linestyles[p], label=str(policy), markevery=int(nb_iter / 10.))
-            ax[2].legend(loc='best')
-            ax[2].set_ylabel('Average (total) cost')
+                ax.plot(np.cumsum(costs_traj[p]) / np.arange(1, nb_iter + 2), linestyles[p], label=str(policy),
+                        markevery=int(nb_iter / 10.))
+            ax.legend(loc='best')
+            ax.set_ylabel('Average cost')
             fig.canvas.draw()
             plt.pause(0.1)
             fig.canvas.flush_events()
         return costs_traj, x_traj
+
+    def discounted_cost(self, nb_iter, policies, plot=False):
+        x_traj, costs_traj = self.run(nb_iter, policies, traj=True)
+        if plot:
+            # plt.ion()
+            # We plot the costs trajectory
+            fig, ax = plt.subplots(1, 1, figsize=(15, 5))
+            linestyles = ['-', '--', '-^', ':']
+            for p, policy in enumerate(policies):
+                discounted_cost = np.cumsum(np.multiply(costs_traj[p], np.power(self.discount, np.arange(nb_iter + 1))))
+                ax.plot(discounted_cost, linestyles[p], label=str(policy), markevery=int(nb_iter / 10.))
+            ax.legend(loc='best')
+            ax.set_ylabel('Discounted cost')
+            fig.canvas.draw()
+            plt.pause(0.1)
+            fig.canvas.flush_events()
+        return costs_traj, x_traj
+
+    def __eq__(self, other):
+        if type(other) == Model:
+            return self.matching_graph == other.matching_graph and self.arrival_dist == other.arrival_dist and \
+                   self.costs == other.costs and self.discount == other.discount and self.capacity == other.capacity \
+                   and self.penalty == other.penalty and self.state_space == other.state_space and \
+                   self.init_state == other.init_state and self.init_arrival == other.init_arrival
+        return NotImplemented
         
 
