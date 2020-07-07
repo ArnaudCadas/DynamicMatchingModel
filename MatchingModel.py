@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations, chain, product
-from typing import Tuple
+from typing import Tuple, List
+
+# import po as po
 
 
 class MatchingGraph:
@@ -582,9 +584,14 @@ class Model:
                 self.init_arrival = self.sample_arrivals()
             else:
                 self.init_arrival = init_arrival
+                assert self.matching_graph == init_arrival.matching_graph and self.capacity == init_arrival.capacity
         # We initialize the state of the system (the length of each queue)
         self.init_state = init_state
-        assert self.capacity == self.init_state.capacity
+        # We assert that every NodesData has the same matching graph and that every State has the same capacity
+        for nodes_data in [self.arrival_dist, self.costs, self.init_state]:
+            assert self.matching_graph == nodes_data.matching_graph
+            if type(nodes_data) == State:
+                assert self.capacity == nodes_data.capacity
 
     def sample_arrivals(self):
         a = State.zeros(self.matching_graph, self.capacity)
@@ -620,15 +627,18 @@ class Model:
         for p, policy in enumerate(policies):
             # We test if we get above capacity with new arrivals
             if np.any(states_list[p].data + arrivals.data > self.capacity):
-                # If we do, we don't add the arrivals and induce a penalty
+                # If we do, we set the arrivals to zero and induce a penalty
+                arrivals = State.zeros(matching_graph=self.matching_graph, capacity=self.capacity)
                 costs_list[p] = self.penalty
-            else:
-                # If not, we add the arrivals and no penalty is induced
-                states_list[p] += arrivals
+
+            # We compute the matchings
+            matchings = policy.match(state=states_list[p], arrivals=arrivals)
+            # We add the arrivals
+            states_list[p] += arrivals
             # We compute the costs
             costs_list[p] += np.dot(states_list[p].data, self.costs.data)
             # We apply the matchings
-            states_list[p] -= policy.match(states_list[p])
+            states_list[p] -= matchings
         # We sample new arrivals
         arrivals = self.sample_arrivals()
         return states_list, arrivals, costs_list
@@ -721,5 +731,13 @@ class Model:
             plt.pause(0.1)
             fig.canvas.flush_events()
         return costs_traj, x_traj
+
+    def __eq__(self, other):
+        if type(other) == Model:
+            return self.matching_graph == other.matching_graph and self.arrival_dist == other.arrival_dist and \
+                   self.costs == other.costs and self.discount == other.discount and self.capacity == other.capacity \
+                   and self.penalty == other.penalty and self.state_space == other.state_space and \
+                   self.init_state == other.init_state and self.init_arrival == other.init_arrival
+        return NotImplemented
         
 

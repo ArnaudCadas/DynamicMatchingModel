@@ -1,15 +1,27 @@
 import numpy as np
+import pickle
 import mipcl_py.mipshell.mipshell as mip
-from MatchingModel import *
-import ReinforcementLearning as RL
+import MatchingModel as mm
+import ReinforcementLearning as rl
 
 
 # TODO: Change the inheritance of all policies to the respective Policy class based on state space
 # We define a class for policies
 class Policy:
 
-    def match(self, *args, **kwargs):
-        raise NotImplementedError
+    def __init__(self, state_space: str):
+        if state_space == "state":
+            self.match = self.compute_matchings_state
+        elif state_space == "state_and_arrival":
+            self.match = self.compute_matchings_state_and_arrival
+        else:
+            raise ValueError("State space should be equal to 'state' or 'state_and_arrival'.")
+
+    def compute_matchings_state(self, state: mm.State):
+        pass
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrival: mm.State):
+        pass
 
     def reset_policy(self, x_0):
         pass
@@ -20,22 +32,26 @@ class Policy:
 
 class PolicyOnState(Policy):
 
-    def match(self, state: State):
+    def compute_matchings_state(self, state: mm.State):
         raise NotImplementedError
 
 
 class PolicyOnStateAndArrivals(Policy):
 
-    def match(self, state: State, arrivals: State):
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
         raise NotImplementedError
 
 
 # We define various policies by creating child class from Policy and implementing the function match()
 
-class NoMatchings(Policy):
+class NoMatchings(PolicyOnState, PolicyOnStateAndArrivals):
 
-    def match(self, x):
-        return Matching.zeros(x)
+    def compute_matchings_state(self, state: mm.State):
+        return mm.Matching.zeros(state=state)
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_matchings_state(state=new_state)
 
     def __str__(self):
         return "No matchings policy"
@@ -43,14 +59,20 @@ class NoMatchings(Policy):
 
 class ValueIterationOptimal(PolicyOnStateAndArrivals):
 
-    def __init__(self, model: Model, nb_iterations=None):
+    def __init__(self, state_space: str, model: mm.Model, nb_iterations=None, load_file=None):
+        assert state_space == "state_and_arrival"
+        super(ValueIterationOptimal, self).__init__(state_space=state_space)
         self.model = model
-        self.value_iteration = RL.ValueIteration(model=self.model)
+        if load_file is None:
+            self.value_iteration = rl.ValueIteration(model=self.model)
+            print("The value iteration algorithm starts. Beware, it can be very long.")
+            self.value_iteration.run(nb_iterations=nb_iterations)
+        else:
+            with open(load_file, 'rb') as pickle_file:
+                self.value_iteration = pickle.load(pickle_file)
+                assert self.value_iteration.model == self.model
 
-        print("The value iteration algorithm starts. Beware, it can be very long.")
-        self.value_iteration.run(nb_iterations=nb_iterations)
-
-    def match(self, state: State, arrivals: State):
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
         if np.any(state.data + arrivals.data > self.model.capacity):
             new_state = state.copy()
         else:
@@ -76,7 +98,7 @@ class Random_policy(Policy):
 
     def match(self, x):
         nb_matchings = 0
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         possible_matchings = x.matchings_available()
         while nb_matchings < self.nb_matchings_max and possible_matchings:
             edge = possible_matchings[np.random.randint(len(possible_matchings))]
@@ -90,24 +112,29 @@ class Random_policy(Policy):
         return 'Random policy m={}'.format(self.nb_matchings_max)
 
 
-class Threshold_N(Policy):
+class Threshold_N(PolicyOnState, PolicyOnStateAndArrivals):
 
-    def __init__(self, threshold):
+    def __init__(self, state_space: str, threshold: float):
+        super(Threshold_N, self).__init__(state_space=state_space)
         self.threshold = threshold
 
-    def match(self, x):
-        u = Matching.zeros(x)
+    def compute_matchings_state(self, state: mm.State):
+        u = mm.Matching.zeros(state)
         # We match all l1
-        u[1, 1] += x[1, 1].min()
+        u[1, 1] += state[1, 1].min()
         # We match all l2
-        u[2, 2] += x[2, 2].min()
+        u[2, 2] += state[2, 2].min()
         # We update the state with the matchings in l1 and l2 because they have priority and they influence the ones in
         # l3
-        new_state = x - u
+        new_state = state - u
         # We match all l3 above the threshold
         l3_matchings = np.maximum(new_state[1, 2].min() - self.threshold, 0.)
         u[1, 2] += l3_matchings
         return u
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_matchings_state(state=new_state)
 
     def __str__(self):
         return 'Threshold N policy t={}'.format(self.threshold)
@@ -120,7 +147,7 @@ class Threshold_policy(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all l4
         u[3, 2] += x[3, 2].min()
         # We match all l1
@@ -146,7 +173,7 @@ class TwP_policy(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,3)
         u[1, 1] += x[1, 1].min()
         u[3, 3] += x[3, 3].min()
@@ -174,7 +201,7 @@ class P14T23(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,2)
         u[1, 1] += x[1, 1].min()
         u[3, 2] += x[3, 2].min()
@@ -197,7 +224,7 @@ class P14T23D2(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,2)
         u[1, 1] += x[1, 1].min()
         u[3, 2] += x[3, 2].min()
@@ -221,7 +248,7 @@ class P13T24D2(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,2)
         u[1, 1] += x[1, 1].min()
         u[2, 2] += x[2, 2].min()
@@ -247,7 +274,7 @@ class OptimalW(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,2)
         u[1, 1] += x[1, 1].min()
         if x.demand(1) >= x.supply(1):
@@ -281,7 +308,7 @@ class OptimalWBis(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,2)
         u[1, 1] += x[1, 1].min()
         if x.demand(1) >= x.supply(1):
@@ -316,7 +343,7 @@ class P13T24(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (2,2)
         u[1, 1] += x[1, 1].min()
         u[2, 2] += x[2, 2].min()
@@ -331,30 +358,32 @@ class P13T24(Policy):
         return 'P13T24 policy t={}'.format(self.thresholds)
 
 
-class ThresholdsWithPriorities(Policy):
+class ThresholdsWithPriorities(PolicyOnState):
 
-    def __init__(self, matching_order: EdgesData, thresholds: EdgesData):
+    def __init__(self, state_space: str, matching_order: mm.EdgesData, thresholds: mm.EdgesData):
         """
+        :param state_space: State space on which is defined the policy.
         :param matching_order: EdgeData giving the order in which each edge will be matched.
         :param thresholds: EdgeData giving the threshold above which each edge will be matched.
         """
+        super(ThresholdsWithPriorities, self).__init__(state_space=state_space)
         assert matching_order.matching_graph is thresholds.matching_graph
         self.matching_order = matching_order
         self.thresholds = thresholds
 
-    def match(self, x: State) -> Matching:
+    def compute_matchings_state(self, state: mm.State) -> mm.Matching:
         """
-        :param x: State from which to match from.
+        :param: State from which to match from.
         :return: Matching based on the State and the Policy used.
         """
-        u = Matching.zeros(x)
-        current_state = x.copy()
+        u = mm.Matching.zeros(state)
+        current_state = state.copy()
         for edge_index in self.matching_order.data:
-            edge = x.matching_graph.edges[edge_index]
+            edge = state.matching_graph.edges[edge_index]
             # We match all above the threshold
             u[edge] += np.maximum(current_state[edge].min() - self.thresholds[edge], 0.)
             # We update the state with the matchings because they have priority and they influence the future ones
-            current_state = x - u
+            current_state = state - u
         return u
 
     def __str__(self):
@@ -368,7 +397,7 @@ class TwPbis_policy(Policy):
         self.thresholds = thresholds
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,3)
         u[1, 1] += x[1, 1].min()
         u[3, 3] += x[3, 3].min()
@@ -397,14 +426,14 @@ class TwMW_policy(Policy):
         self.costs = costs
 
     def match(self, x):
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         # We match all (1,1) and all (3,3)
         u[1, 1] += x[1, 1].min()
         u[3, 3] += x[3, 3].min()
         # We update the state with the matchings because they have priority and they influence the future ones
         new_state = x - u
         # We remove in d_1 and s_3
-        uprime = Matching.zeros(x)
+        uprime = mm.Matching.zeros(x)
         uprime[1, 2] = np.minimum(new_state[1, 2].min(), self.thresholds[0])
         uprime[2, 3] = np.minimum(new_state[2, 3].min(), self.thresholds[1])
         xprime = new_state - uprime
@@ -435,8 +464,8 @@ class MaxWeight_policy(Policy):
         self.costs = costs
 
     def match(self, x):
-        # We suppose that x is a stable state (i.e, before the arrivals, no more matching could have been done)
-        u = Matching.zeros(x)
+        # We suppose that state is a stable state (i.e, before the arrivals, no more matching could have been done)
+        u = mm.Matching.zeros(x)
         # We will use a list of edges candidates that could achieve the max weight
         candidate_list = x.matchings_available_subgraph().maximal_matchings()
         candidates_costs = np.zeros(len(candidate_list))
@@ -456,7 +485,7 @@ class MaxWeight_policy(Policy):
 class OptimiseMW(mip.Problem):
     """ Implementation of the optimisation program that is used in the MaxWeight Policy. """
 
-    def model(self, x: State, costs: NodesData):
+    def model(self, x: mm.State, costs: mm.NodesData):
         """
         :param x: State upon which the matchings are done.
         :param costs: NodesData giving the cost at each node.
@@ -466,8 +495,8 @@ class OptimiseMW(mip.Problem):
         edges_to_nodes = x.matching_graph.edges_to_nodes
         # The variables are the number of matching in each edge
         self.u = u = mip.VarVector([nb_edges], "u", mip.INT, lb=0, ub=mip.VAR_INF)
-        # The goal is to maximize u\\cdot \\nabla h(x) where h(x)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2.
-        # mip.maximize(mip.sum_(costs.data[i] * x.data[i] * mip.sum_(edges_to_nodes[i, j] * u[j] for j in range(nb_edges))
+        # The goal is to maximize u\\cdot \\nabla h(state) where h(state)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2.
+        # mip.maximize(mip.sum_(costs.data[i] * state.data[i] * mip.sum_(edges_to_nodes[i, j] * u[j] for j in range(nb_edges))
         #                       for i in range(nb_nodes)))
         mip.maximize(
             mip.sum_(np.sum(np.multiply(costs[edge], x[edge])) * u[i] for i, edge in enumerate(x.matching_graph.edges)))
@@ -478,34 +507,40 @@ class OptimiseMW(mip.Problem):
             mip.sum_(edges_to_nodes[i, j] * u[j] for j in range(nb_edges)) <= x.data[i]
 
 
-class MaxWeight(Policy):
+class MaxWeight(PolicyOnState, PolicyOnStateAndArrivals):
     """
-    This policy, given a State x, gives any feasible Matching u which maximise the following optimisation problem:
-    u\\cdot \\nabla h(x) where h(x)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2. i.e, it matches the most
+    This policy, given a State state, gives any feasible Matching u which maximise the following optimisation problem:
+    u\\cdot \\nabla h(state) where h(state)=\\sum_{i\\in \\mathcal{D}\\cup\\mathcal{S}} c_i x_i^2. i.e, it matches the most
     costly nodes (a product of the individual cost and the number of item in the node) in priority.
     """
 
-    def __init__(self, costs: NodesData):
+    def __init__(self, state_space: str, costs: mm.NodesData):
         """
+        :param state_space: State space on which is defined the policy.
         :param costs: NodesData giving the cost at each node.
         """
+        super(MaxWeight, self).__init__(state_space=state_space)
         self.costs = costs
 
-    def match(self, x: State):
+    def compute_matchings_state(self, state: mm.State):
         """
-        :param x: State upon which the matchings are done.
-        :return: Matching resulted from using the MaxWeight Policy on the State x.
+        :param state: State upon which the matchings are done.
+        :return: Matching resulted from using the MaxWeight Policy on the State state.
         """
         prob = OptimiseMW("MaxWeight")
-        prob.model(x=x, costs=self.costs)
+        prob.model(x=state, costs=self.costs)
         prob.optimize(silent=True)
         if prob.is_solution:
-            u_star = Matching.zeros(x)
-            for i in np.arange(x.matching_graph.nb_edges):
-                u_star[x.matching_graph.edges[i]] += prob.u[i].val
+            u_star = mm.Matching.zeros(state)
+            for i in np.arange(state.matching_graph.nb_edges):
+                u_star[state.matching_graph.edges[i]] += prob.u[i].val
             return u_star
         else:
             raise ValueError('The MIP optimizer has not found a solution')
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_matchings_state(state=new_state)
 
     def __str__(self):
         return 'MaxWeight policy'
@@ -515,8 +550,8 @@ class Stolyar_policy(Policy):
 
     def __init__(self, x_0, rewards, beta, costs=None):
         self.previous_x = x_0.copy()
-        self.previous_match = Matching.zeros(x_0)
-        self.virtual_x = Virtual_State(x_0.data.copy(), x_0.matchingGraph)
+        self.previous_match = mm.Matching.zeros(x_0)
+        self.virtual_x = mm.Virtual_State(x_0.data.copy(), x_0.matchingGraph)
         self.rewards = rewards
         self.beta = beta
         self.incomplete_matchings = []
@@ -530,25 +565,25 @@ class Stolyar_policy(Policy):
     def match(self, x):
         # update the virtual system: add previous arrivals, apply algo 1 and add the matching to the incomplete queue
         self.update_vs(x)
-        # We scan the queue in FCFS order until we find a feasible match given x
+        # We scan the queue in FCFS order until we find a feasible match given state
         # We return the feasible if one was found or we return 0.
         for match in self.incomplete_matchings:
             if (match.data <= x.data).all():
-                u = Matching(x, match.data)
+                u = mm.Matching(x, match.data)
                 self.incomplete_matchings.remove(match)
                 self.previous_match = u
                 return u
-        u = Matching.zeros(x)
+        u = mm.Matching.zeros(x)
         self.previous_match = u
         return u
 
     def update_virtual_system(self, x):
         # We add the previous arrivals to the virtual state
-        arrivals = State(x.data - self.previous_x.data + self.previous_match.data, x.matchingGraph)
+        arrivals = mm.State(x.data - self.previous_x.data + self.previous_match.data, x.matchingGraph)
         self.virtual_x += arrivals
         self.previous_x = x.copy()
         # We use Stolyar algorithm to get the matching based on the virtual system
-        virtual_match = Virtual_Matching.zeros(x)
+        virtual_match = mm.Virtual_Matching.zeros(x)
         matchings_values = np.zeros(len(self.rewards))
         for i, edge in enumerate(x.matchingGraph.edges):
             matchings_values[i] = self.rewards[i] + self.beta * np.sum(self.virtual_x[edge])
@@ -560,11 +595,11 @@ class Stolyar_policy(Policy):
 
     def update_virtual_system_wCosts(self, x):
         # We add the previous arrivals to the virtual state
-        arrivals = State(x.data - self.previous_x.data + self.previous_match.data, x.matchingGraph)
+        arrivals = mm.State(x.data - self.previous_x.data + self.previous_match.data, x.matchingGraph)
         self.virtual_x += arrivals
         self.previous_x = x.copy()
         # We use Stolyar algorithm to get the matching based on the virtual system
-        virtual_match = Virtual_Matching.zeros(x)
+        virtual_match = mm.Virtual_Matching.zeros(x)
         matchings_values = np.zeros(len(self.rewards))
         for i, edge in enumerate(x.matchingGraph.edges):
             matchings_values[i] = self.rewards[i] + self.beta * np.dot(self.costs[edge].reshape(1, -1),
@@ -578,8 +613,8 @@ class Stolyar_policy(Policy):
     def reset_policy(self, x_0):
         # We reset the previous state, matching and virtual state
         self.previous_x = x_0.copy()
-        self.previous_match = Matching.zeros(x_0)
-        self.virtual_x = Virtual_State(x_0.data.copy(), x_0.matchingGraph)
+        self.previous_match = mm.Matching.zeros(x_0)
+        self.virtual_x = mm.Virtual_State(x_0.data.copy(), x_0.matchingGraph)
         # We empty the list of incomplete matchings
         self.incomplete_matchings = []
 
@@ -601,7 +636,7 @@ class hMWT_policy(Policy):
         self.NUmax = NUmax  # The maximal number of matchings that can be done at once
         self.alpha = alpha  # The mean arrival rate
         self.costs = costs  # The linear costs
-        self.beta = beta  # The perturbation parameter to turn x (or w) in xtil (or wtil)
+        self.beta = beta  # The perturbation parameter to turn state (or w) in xtil (or wtil)
         self.kappa = kappa
         self.theta = theta
         self.delta_plus = delta_plus
@@ -678,8 +713,8 @@ class hMWT_policy(Policy):
         xtil = x.data + self.beta * (np.exp(-x.data / self.beta) - 1.)
         wtil = np.sign(w) * (np.abs(w) + self.beta * (np.exp(-np.abs(w) / self.beta) - 1.))
 
-        # The function h is the sum of two function: \hat{h}(w) et h_c(x)
-        # We compute the gradient of h_c(x)
+        # The function h is the sum of two function: \hat{h}(w) et h_c(state)
+        # We compute the gradient of h_c(state)
         grad_ctil = np.multiply(self.costs.data, (1. - np.exp(-x.data / self.beta)))
         # print('grad_ctil',grad_ctil)
         if w >= 0:
@@ -701,8 +736,8 @@ class hMWT_policy(Policy):
         else:
             ws = self.tau_star + w
             hat_hprime = (self.barC_minus / self.delta_plus) * (ws + (1 / self.theta) * (1 - np.exp(self.theta * ws)))
-        # Finally, we compute the gradient of h(x)
-        grad_h = NodesData(hat_hprime * self.XiD + grad_h_c, x.matchingGraph)
+        # Finally, we compute the gradient of h(state)
+        grad_h = mm.NodesData(hat_hprime * self.XiD + grad_h_c, x.matchingGraph)
         grad_h_index = np.array(
             [np.sum(grad_h[x.matchingGraph.edges[i]]) for i in np.arange(len(x.matchingGraph.edges))])
 
@@ -710,7 +745,7 @@ class hMWT_policy(Policy):
         prob.model(x, grad_h_index, w, self.tau_star, self.Idle_index, self.NUmax)
         prob.optimize(False)
         if prob.is_solution == True:
-            u_star = Matching.zeros(x)
+            u_star = mm.Matching.zeros(x)
             for i in np.arange(len(x.matchingGraph.edges)):
                 u_star[x.matchingGraph.edges[i]] += prob.u[i].val
             return u_star
@@ -725,8 +760,8 @@ class hMWT_policy(Policy):
         xtil = x.data + self.beta * (np.exp(-x.data / self.beta) - 1.)
         wtil = np.sign(w) * (np.abs(w) + self.beta * (np.exp(-np.abs(w) / self.beta) - 1.))
 
-        # The function h is the sum of two function: \hat{h}(w) et h_c(x)
-        # We compute the gradient of h_c(x)
+        # The function h is the sum of two function: \hat{h}(w) et h_c(state)
+        # We compute the gradient of h_c(state)
         grad_ctil = np.multiply(self.costs.data, (1. - np.exp(-x.data / self.beta)))
         if w >= 0:
             grad_barCtil = self.barC_plus * (1. - np.exp(-w / self.beta)) * self.XiS
@@ -745,14 +780,14 @@ class hMWT_policy(Policy):
         else:
             ws = self.tau_star + w
             hat_hprime = (self.barC_minus / self.delta_plus) * (ws + (1 / self.theta) * (1 - np.exp(self.theta * ws)))
-        # Finally, we compute the gradient of h(x)
+        # Finally, we compute the gradient of h(state)
         grad_h = hat_hprime * self.XiS + grad_h_c
 
         prob = hMWT("hMWT")
         prob.model(x, grad_h, w, self.tau_star, self.Idle_index, self.NUmax)
         prob.optimize(False)
         if prob.is_solution == True:
-            u_star = Matching.zeros(x)
+            u_star = mm.Matching.zeros(x)
             for i in np.arange(len(x.matchingGraph.edges)):
                 u_star[x.matchingGraph.edges[i]] += prob.u[i].val
             return u_star
@@ -776,7 +811,7 @@ class hMWT(mip.Problem):
     def model(self, x, grad_h, w, tau_star, Idle_index, NUmax):
         nb_edges = len(x.matchingGraph.edges)
         # The variables are the number of matching in each edge
-        # u[i] correspond to the number of matching in x.matching_graph.edges[i]
+        # u[i] correspond to the number of matching in state.matching_graph.edges[i]
         self.u = u = mip.VarVector([nb_edges], "u", mip.INT, lb=0, ub=NUmax)
         # The goal is to maximize grad_h*u
         mip.maximize(mip.sum_(grad_h[i] * u[i] for i in range(nb_edges)))

@@ -1,14 +1,14 @@
 import numpy as np
 import itertools
-import json
+import pickle
 from typing import Tuple, List
 
-from MatchingModel import *
+import MatchingModel as mm
 
 
 class ValueFunction:
 
-    def __init__(self, model: Model):
+    def __init__(self, model: mm.Model):
         self.model = model
         assert np.isfinite(self.model.capacity)
 
@@ -29,7 +29,7 @@ class ValueFunction:
         tuples_list = []
         for arrival_numbers in itertools.product(range(int(self.model.capacity) + 1),
                                                  repeat=len(self.complete_arrival_graph_edges_list)):
-            state = State.zeros(matching_graph=self.model.matching_graph, capacity=self.model.capacity)
+            state = mm.State.zeros(matching_graph=self.model.matching_graph, capacity=self.model.capacity)
             try:
                 for i, arrival_edge in enumerate(self.complete_arrival_graph_edges_list):
                     state[arrival_edge] += arrival_numbers[i]
@@ -39,7 +39,7 @@ class ValueFunction:
                 state_tuple = tuple(state.data)
                 if state_tuple not in tuples_list:
                     for arrival_pair in self.complete_arrival_graph_edges_list:
-                        arrivals = State.zeros(matching_graph=self.model.matching_graph, capacity=self.model.capacity)
+                        arrivals = mm.State.zeros(matching_graph=self.model.matching_graph, capacity=self.model.capacity)
                         arrivals[arrival_pair] += 1.
                         self.state_space.append((state, arrivals))
                         tuples_list.append(tuple(state.data))
@@ -48,16 +48,16 @@ class ValueFunction:
         for state, arrivals in self.state_space:
             self[state, arrivals] = 0.
 
-    def __getitem__(self, item: Tuple[State, State]):
+    def __getitem__(self, item: Tuple[mm.State, mm.State]):
         state, arrivals = item
-        if type(state) == State and type(arrivals) == State:
+        if type(state) == mm.State and type(arrivals) == mm.State:
             return self.values[(tuple(state.data), tuple(arrivals.data))]
         else:
             return NotImplemented
 
-    def __setitem__(self, item: Tuple[State, State], value):
+    def __setitem__(self, item: Tuple[mm.State, mm.State], value):
         state, arrivals = item
-        if type(state) == State and type(arrivals) == State:
+        if type(state) == mm.State and type(arrivals) == mm.State:
             self.values[(tuple(state.data), tuple(arrivals.data))] = value
         else:
             return NotImplemented
@@ -71,11 +71,11 @@ class ValueFunction:
 
 class ValueIteration:
 
-    def __init__(self, model: Model):
+    def __init__(self, model: mm.Model):
         self.model = model
         self.V = ValueFunction(model=self.model)
 
-    def bellman_operator_with_matching(self, state: State, arrivals: State, matching: Matching):
+    def bellman_operator_with_matching(self, state: mm.State, arrivals: mm.State, matching: mm.Matching):
         res = 0.
         if np.any(state.data + arrivals.data > self.model.capacity):
             new_state = state.copy()
@@ -85,12 +85,12 @@ class ValueIteration:
         res += np.dot(self.model.costs.data, new_state.data)
         for arrival_edge in self.V.complete_arrival_graph_edges_list:
             arrival_probability = np.prod(self.model.arrival_dist[arrival_edge])
-            arrival = State.zeros(self.model.matching_graph, self.model.capacity)
+            arrival = mm.State.zeros(self.model.matching_graph, self.model.capacity)
             arrival[arrival_edge] += 1.
             res += self.model.discount * self.V[new_state - matching, arrival] * arrival_probability
         return res
 
-    def bellman_operator(self, state: State, arrivals: State):
+    def bellman_operator(self, state: mm.State, arrivals: mm.State):
         res_for_all_matchings = []
         if np.any(state.data + arrivals.data > self.model.capacity):
             new_state = state.copy()
@@ -114,7 +114,7 @@ class ValueIteration:
             next_V[state, arrivals] = self.bellman_operator(state=state, arrivals=arrivals)
         self.V = next_V.copy()
 
-    def run(self, nb_iterations=None, save=False):
+    def run(self, nb_iterations=None, save_file=None):
         self.V.initialise_values()
         if nb_iterations is None:
             while not self.is_optimal():
@@ -122,9 +122,9 @@ class ValueIteration:
         else:
             for _ in np.arange(nb_iterations):
                 self.iterate()
-        if save:
-            with open('value_iteration_result.json', 'w') as json_file:
-                json.dump(self.V.values, json_file)
+        if save_file is not None:
+            with open(save_file, 'wb') as pickle_file:
+                pickle.dump(self, pickle_file)
         return self.V
 
 
