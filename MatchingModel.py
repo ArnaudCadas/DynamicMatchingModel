@@ -622,14 +622,14 @@ class Model:
                 states_list[p] += arrivals
         return states_list, costs_list
 
-    def iterate_state_with_arrival(self, states_list, arrivals, policies):
+    def iterate_state_with_arrival(self, states_list: List[State], arrivals: State, policies):
         costs_list = np.zeros(len(policies))
         for p, policy in enumerate(policies):
             # We test if we get above capacity with new arrivals
             if np.any(states_list[p].data + arrivals.data > self.capacity):
                 # If we do, we set the arrivals to zero and induce a penalty
                 arrivals = State.zeros(matching_graph=self.matching_graph, capacity=self.capacity)
-                costs_list[p] = self.penalty
+                costs_list[p] += self.penalty
 
             # We compute the matchings
             matchings = policy.match(state=states_list[p], arrivals=arrivals)
@@ -704,9 +704,9 @@ class Model:
             # plt.ion()
             # We plot the costs trajectory
             fig, ax = plt.subplots(1, 1, figsize=(15, 5))
-            linestyles = ['-', '--', '-^', ':']
+            markers = ['.', 'o', '^', 'x', 's', 'D']
             for p, policy in enumerate(policies):
-                ax.plot(np.cumsum(costs_traj[p]) / np.arange(1, nb_iter + 2), linestyles[p], label=str(policy),
+                ax.plot(np.cumsum(costs_traj[p]) / np.arange(1, nb_iter + 2), marker=markers[p], label=str(policy),
                         markevery=int(nb_iter / 10.))
             ax.legend(loc='best')
             ax.set_ylabel('Average cost')

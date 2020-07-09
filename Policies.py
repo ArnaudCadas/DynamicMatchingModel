@@ -112,11 +112,37 @@ class Random_policy(Policy):
         return 'Random policy m={}'.format(self.nb_matchings_max)
 
 
+class Priority_N(PolicyOnState, PolicyOnStateAndArrivals):
+
+    def compute_matchings_state(self, state: mm.State):
+        u = mm.Matching.zeros(state)
+        # We match all l1
+        u[1, 1] += state[1, 1].min()
+        # We match all l2
+        u[2, 2] += state[2, 2].min()
+        return u
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_matchings_state(state=new_state)
+
+    def __str__(self):
+        return 'Priority N policy'
+
+
 class Threshold_N(PolicyOnState, PolicyOnStateAndArrivals):
 
-    def __init__(self, state_space: str, threshold: float):
+    def __init__(self, state_space: str, threshold: int):
         super(Threshold_N, self).__init__(state_space=state_space)
         self.threshold = threshold
+
+    @property
+    def threshold(self):
+        return self._threshold
+
+    @threshold.setter
+    def threshold(self, threshold):
+        self._threshold = np.round(threshold)
 
     def compute_matchings_state(self, state: mm.State):
         u = mm.Matching.zeros(state)

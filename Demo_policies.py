@@ -79,10 +79,10 @@ def demo_N_with_capacity():
     beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
     arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
     costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
-    P = [po.Threshold_N(threshold=0.),
-         po.Threshold_N(threshold=1.),
-         po.MaxWeight(costs=costs),
-         po.NoMatchings()]
+    P = [po.Threshold_N(threshold=1, state_space="state_and_arrival"),
+         po.Threshold_N(threshold=2, state_space="state_and_arrival"),
+         po.Threshold_N(threshold=3, state_space="state_and_arrival"),
+         po.Threshold_N(threshold=4, state_space="state_and_arrival")]
     capacity = 5.
     x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
     test_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0,
@@ -93,7 +93,7 @@ def demo_N_with_capacity():
     res = test_model.run(nb_iter=1000, policies=P, plot=True)
 
     t = time.time()
-    N = 10000
+    N = 1000000
     c, x = test_model.average_cost(N, P, plot=True)
     print(time.time() - t)
     for i in range(len(P)):
@@ -187,8 +187,32 @@ def demo_N_value_iteration(do_value_iteration=False, nb_value_iterations=100):
     #     value_iteration.iterate()
 
 
+def demo_N_salmut():
+    np.random.seed(42)
+    N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
+    epsilon = 0.1
+    alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
+    beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
+    arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
+    costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
+    capacity = 5.
+    x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
+    N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0, capacity=capacity,
+                       penalty=100., state_space="state_with_arrival")
+
+    fast_time_scale = rl.BorkarFastTimeScale(power=0.6, shift=2., scale=100.)
+    slow_time_scale = rl.ClassicTimeScale(power=1., scalar=10.)
+    N_salmut = rl.Salmut(model=N_model, fast_time_scale=fast_time_scale, slow_time_scale=slow_time_scale)
+
+    ti = time.time()
+    final_threshold = N_salmut.run(nb_iterations=1000000, plot=True)
+    print("Salmut has ended, runtime: {}, final threshold: {}".format(time.time() - ti, final_threshold))
+    plt.show()
+
+
 if __name__ == "__main__":
-    demo_N_value_iteration(do_value_iteration=False)
+    demo_N_salmut()
+    # demo_N_value_iteration(do_value_iteration=False)
     # demo_N_with_capacity()
     # demo_N_with_capacity_discounted()
     # demo_N()
