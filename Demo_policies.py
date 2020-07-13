@@ -5,6 +5,7 @@ import time
 import MatchingModel as mm
 import Policies as po
 import ReinforcementLearning as rl
+import utils as utils
 
 
 def demo_W():
@@ -187,8 +188,73 @@ def demo_N_value_iteration(do_value_iteration=False, nb_value_iterations=100):
     #     value_iteration.iterate()
 
 
+def demo_N_relative_value_iteration(do_value_iteration=False, nb_value_iterations=100):
+    N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
+    epsilon = 0.1
+    alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
+    beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
+    arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
+    costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
+    capacity = 5.
+    x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
+    init_arrival = mm.State(values=np.array([0., 1., 1., 0.]), matching_graph=N_graph, capacity=capacity)
+    N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0,
+                       capacity=capacity, penalty=100., state_space="state_with_arrival", init_arrival=init_arrival)
+    relative_value_iteration_result_file = "relative_value_iteration_N_graph.p"
+
+    if do_value_iteration:
+        print("Start of relative value iteration...")
+        t = time.time()
+        relative_value_iteration = rl.RelativeValueIteration(model=N_model)
+        relative_value_iteration.run(nb_iterations=nb_value_iterations, save_file=relative_value_iteration_result_file)
+        print("End of relative value iteration, runtime: {}".format(time.time() - t))
+        print("Is the solution optimal ? {}".format(relative_value_iteration.is_optimal()))
+
+    P = [po.RelativeValueIterationOptimal(state_space="state_and_arrival", model=N_model,
+                                          load_file=relative_value_iteration_result_file),
+         po.MaxWeight(state_space="state_and_arrival", costs=costs)]
+    print("For debug")
+
+    plt.ion()
+
+    res = N_model.run(nb_iter=1000, policies=P, plot=True)
+
+    t = time.time()
+    N = 10000
+    c, x = N_model.average_cost(N, P, plot=True)
+    print(time.time() - t)
+    for i in range(len(P)):
+        print(P[i], ": ", c[i][N])
+
+    plt.ioff()
+    plt.show()
+
+
+def demo_N_relative_value_iteration_randomized_policy(nb_value_iterations=100):
+    N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
+    epsilon = 0.1
+    alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
+    beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
+    arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
+    costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
+    capacity = 5.
+    x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
+    init_arrival = mm.State(values=np.array([0., 1., 1., 0.]), matching_graph=N_graph, capacity=capacity)
+    N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0,
+                       capacity=capacity, penalty=100., state_space="state_with_arrival", init_arrival=init_arrival)
+    policy = po.Threshold_N_continuous(state_space="state_and_arrival", threshold=2.3)
+    relative_value_iteration_result_file = "relative_value_iteration_N_graph_randomized_policy.p"
+
+    print("Start of relative value iteration...")
+    t = time.time()
+    relative_value_iteration = rl.RelativeValueIteration(model=N_model, policy=policy)
+    relative_value_iteration.run(nb_iterations=nb_value_iterations, plot=True)
+    print("End of relative value iteration, runtime: {}".format(time.time() - t))
+    print("Is the solution optimal ? {}".format(relative_value_iteration.is_optimal()))
+
+
 def demo_N_salmut():
-    np.random.seed(42)
+    np.random.seed(0)
     N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
     epsilon = 0.1
     alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
@@ -200,18 +266,38 @@ def demo_N_salmut():
     N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0, capacity=capacity,
                        penalty=100., state_space="state_with_arrival")
 
-    fast_time_scale = rl.BorkarFastTimeScale(power=0.6, shift=2., scale=100.)
-    slow_time_scale = rl.ClassicTimeScale(power=1., scalar=10.)
-    N_salmut = rl.Salmut(model=N_model, fast_time_scale=fast_time_scale, slow_time_scale=slow_time_scale)
+    fast_time_scale = rl.BorkarFastTimeScale(power=0.8, shift=2., scale=10.)
+    slow_time_scale = rl.ClassicTimeScale(power=1., scalar=0.1)
+    N_salmut = rl.SalmutCB(model=N_model, fast_time_scale=fast_time_scale, slow_time_scale=slow_time_scale)
 
     ti = time.time()
-    final_threshold = N_salmut.run(nb_iterations=1000000, plot=True)
+    final_threshold = N_salmut.run(nb_iterations=100000, plot=True, verbose=True)
     print("Salmut has ended, runtime: {}, final threshold: {}".format(time.time() - ti, final_threshold))
     plt.show()
 
 
+def demo_N_compute_optimal_threshold():
+    N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
+    epsilon = 0.1
+    alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
+    beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
+    arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
+    costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
+    capacity = 5.
+    init_state = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
+    init_arrival = mm.State(values=np.array([1., 0., 1., 0.]), matching_graph=N_graph, capacity=capacity)
+    N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=init_state,
+                       init_arrival=init_arrival, capacity=capacity, penalty=100., state_space="state_with_arrival")
+
+    optimal_threshold = utils.compute_optimal_threshold(model=N_model)
+    print("Optimal threshold: {}".format(optimal_threshold))
+
+
 if __name__ == "__main__":
+    # demo_N_compute_optimal_threshold()
     demo_N_salmut()
+    # demo_N_relative_value_iteration(do_value_iteration=False)
+    # demo_N_relative_value_iteration_randomized_policy()
     # demo_N_value_iteration(do_value_iteration=False)
     # demo_N_with_capacity()
     # demo_N_with_capacity_discounted()

@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.stats as stats
 import pickle
 import mipcl_py.mipshell.mipshell as mip
 import MatchingModel as mm
@@ -20,7 +21,7 @@ class Policy:
     def compute_matchings_state(self, state: mm.State):
         pass
 
-    def compute_matchings_state_and_arrival(self, state: mm.State, arrival: mm.State):
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
         pass
 
     def reset_policy(self, x_0):
@@ -39,6 +40,42 @@ class PolicyOnState(Policy):
 class PolicyOnStateAndArrivals(Policy):
 
     def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        raise NotImplementedError
+
+
+class RandomizedPolicy(Policy):
+
+    def __init__(self, state_space: str):
+        super(RandomizedPolicy, self).__init__(state_space=state_space)
+        if state_space == "state":
+            self.distribution = self.compute_distribution_state
+        elif state_space == "state_and_arrival":
+            self.distribution = self.compute_distribution_state_and_arrival
+        else:
+            raise ValueError("State space should be equal to 'state' or 'state_and_arrival'.")
+
+    def compute_distribution_state(self, state: mm.State):
+        pass
+
+    def compute_distribution_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        pass
+
+
+class RandomizedPolicyOnState(RandomizedPolicy):
+
+    def compute_matchings_state(self, state: mm.State):
+        raise NotImplementedError
+
+    def compute_distribution_state(self, state: mm.State):
+        raise NotImplementedError
+
+
+class RandomizedPolicyOnStateAndArrivals(RandomizedPolicy):
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        raise NotImplementedError
+
+    def compute_distribution_state_and_arrival(self, state: mm.State, arrivals: mm.State):
         raise NotImplementedError
 
 
@@ -86,6 +123,37 @@ class ValueIterationOptimal(PolicyOnStateAndArrivals):
 
     def __str__(self):
         return "Optimal policy from Value Iteration"
+
+
+class RelativeValueIterationOptimal(PolicyOnStateAndArrivals):
+
+    def __init__(self, state_space: str, model: mm.Model, nb_iterations=None, load_file=None):
+        assert state_space == "state_and_arrival"
+        super(RelativeValueIterationOptimal, self).__init__(state_space=state_space)
+        self.model = model
+        if load_file is None:
+            self.relative_value_iteration = rl.RelativeValueIteration(model=self.model)
+            print("The value iteration algorithm starts. Beware, it can be very long.")
+            self.relative_value_iteration.run(nb_iterations=nb_iterations)
+        else:
+            with open(load_file, 'rb') as pickle_file:
+                self.relative_value_iteration = pickle.load(pickle_file)
+                assert self.relative_value_iteration.model == self.model
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        if np.any(state.data + arrivals.data > self.model.capacity):
+            new_state = state.copy()
+        else:
+            new_state = state + arrivals
+        matchings_available = new_state.complete_matchings_available()
+        res_for_all_matchings = np.zeros(len(matchings_available))
+        for i, matching in enumerate(matchings_available):
+            res_for_all_matchings[i] = self.relative_value_iteration.bellman_operator_with_matching(
+                state=state, arrivals=arrivals, matching=matching)
+        return matchings_available[np.argmin(res_for_all_matchings)]
+
+    def __str__(self):
+        return "Optimal policy from Relative Value Iteration"
 
 
 # We define a random policy which choose a random possible (depending on the State) matching.
@@ -164,6 +232,136 @@ class Threshold_N(PolicyOnState, PolicyOnStateAndArrivals):
 
     def __str__(self):
         return 'Threshold N policy t={}'.format(self.threshold)
+
+
+class Threshold_N_continuous(RandomizedPolicyOnState, RandomizedPolicyOnStateAndArrivals):
+
+    def __init__(self, state_space: str, threshold: float):
+        super(Threshold_N_continuous, self).__init__(state_space=state_space)
+        self.threshold = threshold
+
+    @property
+    def threshold(self):
+        return self._threshold
+
+    @threshold.setter
+    def threshold(self, threshold):
+        self._threshold = threshold
+        self._threshold_floor = np.floor(self._threshold)
+        self._threshold_ceil = np.ceil(self._threshold)
+        self._threshold_is_int = (self._threshold_floor == self._threshold_ceil)
+        self._threshold_probability = self._threshold - self._threshold_floor
+
+    def compute_matchings_state(self, state: mm.State):
+        u = mm.Matching.zeros(state)
+        # We match all l1
+        u[1, 1] += state[1, 1].min()
+        # We match all l2
+        u[2, 2] += state[2, 2].min()
+        # We test if we match in l3 or not
+        if self._threshold_is_int:
+            matching_threshold = self._threshold
+        else:
+            if np.random.rand() <= self._threshold_probability:
+                matching_threshold = self._threshold_ceil
+            else:
+                matching_threshold = self._threshold_floor
+        # We update the state with the matchings in l1 and l2 because they have priority and they influence the ones in
+        # l3
+        new_state = state - u
+        # We match all l3 above the threshold
+        l3_matchings = np.maximum(new_state[1, 2].min() - matching_threshold, 0.)
+        u[1, 2] += l3_matchings
+        return u
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_matchings_state(state=new_state)
+
+    def compute_distribution_state(self, state: mm.State):
+        dist = []
+        u = mm.Matching.zeros(state)
+        u[1, 1] += state[1, 1].min()
+        u[2, 2] += state[2, 2].min()
+        if self._threshold_is_int:
+            new_state = state - u
+            u[1, 2] += np.maximum(new_state[1, 2].min() - self._threshold, 0.)
+            dist.append((u, 1.))
+        else:
+            new_state = state - u
+            u_ceil = u.copy()
+            u_ceil[1, 2] += np.maximum(new_state[1, 2].min() - self._threshold_ceil, 0.)
+            dist.append((u_ceil, self._threshold_probability))
+            u_floor = u.copy()
+            u_floor[1, 2] += np.maximum(new_state[1, 2].min() - self._threshold_floor, 0.)
+            dist.append((u_ceil, 1. - self._threshold_probability))
+        return dist
+
+    def compute_distribution_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_distribution_state(state=new_state)
+
+    def __str__(self):
+        return 'Threshold N continuous policy t={}'.format(self.threshold)
+
+
+class Threshold_N_norm_dist(RandomizedPolicyOnState, RandomizedPolicyOnStateAndArrivals):
+
+    def __init__(self, state_space: str, threshold: float):
+        super(Threshold_N_norm_dist, self).__init__(state_space=state_space)
+        self.threshold = threshold
+
+    def compute_matchings_state(self, state: mm.State):
+        u = mm.Matching.zeros(state)
+        # We match all l1
+        u[1, 1] += state[1, 1].min()
+        # We match all l2
+        u[2, 2] += state[2, 2].min()
+        # We update the state with the matchings in l1 and l2 because they have priority and they influence the ones in
+        # l3
+        new_state = state - u
+        nb_l3_items = np.min(new_state[1, 2])
+        # We construct the distribution from which we will sample the real threshold
+        sigma = 3. / (2. * np.square(2. * np.log(2.)))
+        unormalized_dist = np.array([stats.norm.pdf(self.threshold,
+                                                    loc=k, scale=sigma) for k in np.arange(nb_l3_items + 1)])
+        threshold_distribution = unormalized_dist / np.sum(unormalized_dist)
+        # We sample the real threshold according to this distribution
+        sample = stats.multinomial(n=1, p=threshold_distribution).rvs()
+        matching_threshold = np.where(sample == 1)[1][0]
+        # We match all l3 above the threshold
+        l3_matchings = np.maximum(nb_l3_items - matching_threshold, 0.)
+        u[1, 2] += l3_matchings
+        return u
+
+    def compute_matchings_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_matchings_state(state=new_state)
+
+    def compute_distribution_state(self, state: mm.State):
+        dist = []
+        u = mm.Matching.zeros(state)
+        u[1, 1] += state[1, 1].min()
+        u[2, 2] += state[2, 2].min()
+        new_state = state - u
+        nb_l3_items = np.min(new_state[1, 2])
+        # We construct the distribution from which we will sample the real threshold
+        sigma = 3. / (2. * np.square(2. * np.log(2.)))
+        unormalized_dist = np.array([stats.norm(self.threshold,
+                                                loc=k, scale=sigma) for k in np.arange(nb_l3_items + 1)])
+        threshold_distribution = unormalized_dist / np.sum(unormalized_dist)
+        for matching_threshold in np.arange(nb_l3_items + 1):
+            matching = u.copy()
+            matching[1, 2] += np.maximum(nb_l3_items - matching_threshold, 0.)
+            dist.append((matching, threshold_distribution[matching_threshold]))
+        return dist
+
+    def compute_distribution_state_and_arrival(self, state: mm.State, arrivals: mm.State):
+        new_state = state + arrivals
+        return self.compute_distribution_state(state=new_state)
+
+    def __str__(self):
+        return 'Threshold N continuous policy t={}'.format(self.threshold)
 
 
 class Threshold_policy(Policy):
