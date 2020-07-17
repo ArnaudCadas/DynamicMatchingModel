@@ -2,6 +2,7 @@ import numpy as np
 import sympy as sp
 import itertools
 from typing import Tuple
+import sys, time
 
 import MatchingModel as mm
 import Policies as po
@@ -9,7 +10,7 @@ import Policies as po
 
 class TransitionMatrix:
 
-    def __init__(self, model: mm.Model, policy: po.PolicyOnStateAndArrivals):
+    def __init__(self, model: mm.Model, policy):
         self.model = model
         assert np.isfinite(self.model.capacity)
         self.policy = policy
@@ -88,19 +89,19 @@ def compute_optimal_threshold(model: mm.Model):
         # We compute the stationary distribution
         policy = po.Threshold_N(state_space="state_and_arrival", threshold=threshold)
         transition_matrix = TransitionMatrix(model=model, policy=policy)
-        nb_states = transition_matrix.nb_states
-        distribution_constraint = np.ones((1, nb_states))
-        linear_system_coef = np.vstack((transition_matrix.values - np.eye(nb_states), distribution_constraint))
+        # nb_states = transition_matrix.nb_states
+        # distribution_constraint = np.ones((1, nb_states))
+        # linear_system_coef = np.vstack((transition_matrix.values - np.eye(nb_states), distribution_constraint))
         # linear_system_coef = transition_matrix.values - np.eye(nb_states)
-        linear_system_ordinate = np.vstack((np.zeros((nb_states, 1)), np.ones((1, 1))))
+        # linear_system_ordinate = np.vstack((np.zeros((nb_states, 1)), np.ones((1, 1))))
         # linear_system_ordinate = np.zeros((nb_states, 1))
         # stationary_dist = np.linalg.solve(a=linear_system_coef, b=linear_system_ordinate)
         # solution = np.linalg.solve(a=linear_system_coef, b=linear_system_ordinate)
         # linear_system_coef_sp = sp.Matrix(linear_system_coef)
         # linear_system_ordinate_sp = sp.Matrix(linear_system_ordinate)
         # solution = sp.solve_linear_system((linear_system_coef_sp, linear_system_ordinate_sp))
-        solution = np.linalg.lstsq(a=linear_system_coef, b=linear_system_ordinate)
-        stationary_dist = solution[0]
+        # solution = np.linalg.lstsq(a=linear_system_coef, b=linear_system_ordinate)
+        # stationary_dist = solution[0]
         # stationary_dist = solution / np.sum(solution)
 
         # eig vector of eig value 1
@@ -123,3 +124,80 @@ def compute_optimal_threshold(model: mm.Model):
             average_cost += costs * stationary_dist[i]
         average_cost_array[threshold] = average_cost
     return np.argmin(average_cost_array)
+
+
+def sec2str(seconds):
+    hours, rem = divmod(seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours > 0:
+        return '%02d:%02d:%02d' % (hours, minutes, int(seconds))
+    elif minutes > 0:
+        return '%02d:%02d' % (minutes, int(seconds))
+    else:
+        return '%0.2f' % seconds
+
+
+def progprint_old(iterator, total=None, periteration=1, perline=25, show_times=True):
+    # time.clock() is cpu time of current process
+    # time.time() is wall time
+    times = []
+    idx = 0
+    numdigits = None
+    if total is not None:
+        numdigits = len('%d' % total)
+    for thing in iterator:
+        prev_time = time.time()
+        yield thing
+        times.append(time.time() - prev_time)
+        if (idx + 1) % periteration == 0:
+            sys.stdout.write('.')
+            if (idx+1) % perline == 0:
+                if show_times:
+                    avgtime = np.mean(times).item()
+                    if total is not None:
+                        eta = sec2str(avgtime * (total - (idx + 1)))
+                        sys.stdout.write((
+                            '  [ %%%dd/%%%dd, %%7.2fsec avg, ETA %%s ]\n' % (numdigits, numdigits))
+                                         % (idx+1, total, avgtime, eta))
+                    else:
+                        sys.stdout.write('  [ %d done, %7.2fsec avg ]\n' % (idx+1, avgtime))
+                else:
+                    if total is not None:
+                        sys.stdout.write(('  [ %%%dd/%%%dd ]\n' % (numdigits, numdigits)) % (idx+1, total))
+                    else:
+                        sys.stdout.write('  [ %d ]\n' % (idx+1))
+        idx += 1
+        sys.stdout.flush()
+    print('')
+    if show_times and len(times) > 0:
+        total = sec2str(seconds=np.sum(times))
+        print('%7.2fsec avg, %s total\n' % (np.mean(times).item(), total))
+
+
+def progprint(iterator, total, periteration=1, perline=25, show_times=True):
+    # time.clock() is cpu time of current process
+    # time.time() is wall time
+    assert total % periteration == 0
+    times = []
+    numdigits = len('%d' % total)
+    for dot_idx in np.arange(int(total / periteration)):
+        prev_time = time.time()
+        for _ in np.arange(periteration):
+            yield next(iterator)
+        times.append(time.time() - prev_time)
+        sys.stdout.write('.')
+        if (dot_idx + 1) % perline == 0:
+            idx = (dot_idx + 1) * periteration
+            if show_times:
+                avgtime = np.mean(times).item()
+                eta = sec2str(avgtime * (total - idx) / periteration)
+                sys.stdout.write((
+                    '  [ %%%dd/%%%dd, %%7.2fsec avg, ETA %%s ]\n' % (numdigits, numdigits))
+                                 % (idx, total, avgtime, eta))
+            else:
+                sys.stdout.write(('  [ %%%dd/%%%dd ]\n' % (numdigits, numdigits)) % (idx, total))
+        sys.stdout.flush()
+    print('')
+    if show_times and len(times) > 0:
+        total = sec2str(seconds=np.sum(times))
+        print('%7.2fsec avg, %s total\n' % (np.mean(times).item(), total))

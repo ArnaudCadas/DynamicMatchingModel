@@ -73,18 +73,18 @@ def demo_N():
 
 
 def demo_N_with_capacity():
-    np.random.seed(42)
+    np.random.seed(0)
     N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
     epsilon = 0.1
     alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
     beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
     arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
     costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
-    P = [po.Threshold_N(threshold=1, state_space="state_and_arrival"),
+    P = [po.Threshold_N(threshold=0, state_space="state_and_arrival"),
+         po.Threshold_N(threshold=1, state_space="state_and_arrival"),
          po.Threshold_N(threshold=2, state_space="state_and_arrival"),
-         po.Threshold_N(threshold=3, state_space="state_and_arrival"),
-         po.Threshold_N(threshold=4, state_space="state_and_arrival")]
-    capacity = 5.
+         po.Threshold_N(threshold=3, state_space="state_and_arrival")]
+    capacity = 3.
     x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
     test_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0,
                           capacity=capacity, penalty=100., state_space="state_with_arrival")
@@ -94,7 +94,7 @@ def demo_N_with_capacity():
     res = test_model.run(nb_iter=1000, policies=P, plot=True)
 
     t = time.time()
-    N = 1000000
+    N = 100000
     c, x = test_model.average_cost(N, P, plot=True)
     print(time.time() - t)
     for i in range(len(P)):
@@ -230,19 +230,19 @@ def demo_N_relative_value_iteration(do_value_iteration=False, nb_value_iteration
     plt.show()
 
 
-def demo_N_relative_value_iteration_randomized_policy(nb_value_iterations=100):
+def demo_N_relative_value_iteration_randomized_policy(nb_value_iterations=500):
     N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
     epsilon = 0.1
     alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
     beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
     arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
     costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
-    capacity = 5.
+    capacity = 3.
     x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
     init_arrival = mm.State(values=np.array([0., 1., 1., 0.]), matching_graph=N_graph, capacity=capacity)
     N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0,
                        capacity=capacity, penalty=100., state_space="state_with_arrival", init_arrival=init_arrival)
-    policy = po.Threshold_N_continuous(state_space="state_and_arrival", threshold=2.3)
+    policy = po.Threshold_N_norm_dist_all(state_space="state_and_arrival", threshold=1.)
     relative_value_iteration_result_file = "relative_value_iteration_N_graph_randomized_policy.p"
 
     print("Start of relative value iteration...")
@@ -254,7 +254,7 @@ def demo_N_relative_value_iteration_randomized_policy(nb_value_iterations=100):
 
 
 def demo_N_salmut():
-    np.random.seed(0)
+    np.random.seed(1)
     N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
     epsilon = 0.1
     alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
@@ -266,9 +266,34 @@ def demo_N_salmut():
     N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0, capacity=capacity,
                        penalty=100., state_space="state_with_arrival")
 
-    fast_time_scale = rl.BorkarFastTimeScale(power=0.8, shift=2., scale=10.)
-    slow_time_scale = rl.ClassicTimeScale(power=1., scalar=0.1)
-    N_salmut = rl.SalmutCB(model=N_model, fast_time_scale=fast_time_scale, slow_time_scale=slow_time_scale)
+    # fast_time_scale = rl.BorkarFastTimeScale(power=0.8, shift=2., scale=100.)
+    fast_time_scale = rl.ClassicTimeScale(power=0.9, scalar=1., shift=2.)
+    slow_time_scale = rl.ClassicTimeScale(power=1., scalar=10.)
+    N_salmut = rl.SalmutDB(model=N_model, fast_time_scale=fast_time_scale, slow_time_scale=slow_time_scale)
+
+    ti = time.time()
+    final_threshold = N_salmut.run(nb_iterations=1000000, plot=True, verbose=True)
+    print("Salmut has ended, runtime: {}, final threshold: {}".format(time.time() - ti, final_threshold))
+    plt.show()
+
+
+def demo_N_salmut_capacity3():
+    np.random.seed(0)
+    N_graph = mm.MatchingGraph(edges=[(1, 1), (1, 2), (2, 2)], nb_demand_classes=2, nb_supply_classes=2)
+    epsilon = 0.1
+    alpha = np.array([(1. / 2.) + epsilon, (1. / 2.) - epsilon])
+    beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
+    arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
+    costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
+    capacity = 3.
+    x0 = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
+    N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=x0, capacity=capacity,
+                       penalty=100., state_space="state_with_arrival")
+
+    # fast_time_scale = rl.BorkarFastTimeScale(power=0.8, shift=2., scale=100.)
+    fast_time_scale = rl.ClassicTimeScale(power=0.8, scalar=1., shift=2.)
+    slow_time_scale = rl.ClassicTimeScale(power=1., scalar=10.)
+    N_salmut = rl.SalmutDBWithoutActor(model=N_model, fast_time_scale=fast_time_scale, slow_time_scale=slow_time_scale)
 
     ti = time.time()
     final_threshold = N_salmut.run(nb_iterations=100000, plot=True, verbose=True)
@@ -283,7 +308,7 @@ def demo_N_compute_optimal_threshold():
     beta = np.array([(1. / 2.) - epsilon, (1. / 2.) + epsilon])
     arrival_dist = mm.NodesData.items(demand_items=alpha, supply_items=beta, matching_graph=N_graph)
     costs = mm.NodesData(data=np.array([1., 10., 10., 1.]), matching_graph=N_graph)
-    capacity = 5.
+    capacity = 3.
     init_state = mm.State.zeros(matching_graph=N_graph, capacity=capacity)
     init_arrival = mm.State(values=np.array([1., 0., 1., 0.]), matching_graph=N_graph, capacity=capacity)
     N_model = mm.Model(matching_graph=N_graph, arrival_dist=arrival_dist, costs=costs, init_state=init_state,
@@ -296,6 +321,7 @@ def demo_N_compute_optimal_threshold():
 if __name__ == "__main__":
     # demo_N_compute_optimal_threshold()
     demo_N_salmut()
+    # demo_N_salmut_capacity3()
     # demo_N_relative_value_iteration(do_value_iteration=False)
     # demo_N_relative_value_iteration_randomized_policy()
     # demo_N_value_iteration(do_value_iteration=False)
