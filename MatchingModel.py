@@ -643,6 +643,23 @@ class Model:
         arrivals = self.sample_arrivals()
         return states_list, arrivals, costs_list
 
+    def iterate_state_with_arrival_and_matching(self, state: State, arrivals: State, matchings: Matching):
+        costs = 0.
+        # We test if we get above capacity with new arrivals
+        if np.any(state.data + arrivals.data > self.capacity):
+            # If we do, we set the arrivals to zero and induce a penalty
+            arrivals = State.zeros(matching_graph=self.matching_graph, capacity=self.capacity)
+            costs += self.penalty
+        # We add the arrivals
+        state += arrivals
+        # We compute the costs
+        costs += np.dot(state.data, self.costs.data)
+        # We apply the matchings
+        state -= matchings
+        # We sample new arrivals
+        arrivals = self.sample_arrivals()
+        return state, arrivals, costs
+
     def run(self, nb_iter, policies, traj=False, plot=False):
         nb_policies = len(policies)
         # states_list stores the state of the system under each policy given by the list policies

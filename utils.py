@@ -83,7 +83,7 @@ class TransitionMatrix:
     #     return new_value_function
 
 
-def compute_optimal_threshold(model: mm.Model):
+def compute_optimal_threshold(model: mm.Model, return_array=False):
     average_cost_array = np.zeros(int(model.capacity + 1))
     for threshold in np.arange(int(model.capacity) + 1):
         # We compute the stationary distribution
@@ -123,7 +123,10 @@ def compute_optimal_threshold(model: mm.Model):
             costs += np.dot(total_state.data, model.costs.data)
             average_cost += costs * stationary_dist[i]
         average_cost_array[threshold] = average_cost
-    return np.argmin(average_cost_array)
+    if return_array:
+        return average_cost_array
+    else:
+        return np.argmin(average_cost_array)
 
 
 def sec2str(seconds):

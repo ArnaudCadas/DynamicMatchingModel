@@ -366,16 +366,17 @@ class Threshold_N_norm_dist(RandomizedPolicyOnState, RandomizedPolicyOnStateAndA
 
 class Threshold_N_norm_dist_all(RandomizedPolicyOnState, RandomizedPolicyOnStateAndArrivals):
 
-    def __init__(self, state_space: str, threshold: float):
+    def __init__(self, state_space: str, threshold: float, sigma=0.5):
         super(Threshold_N_norm_dist_all, self).__init__(state_space=state_space)
         self.threshold = threshold
+        # self.sigma = 3. / (2. * np.square(2. * np.log(2.)))
+        self.sigma = sigma
 
     def compute_matchings_state(self, state: mm.State):
         # We construct the distribution from which we will sample the real threshold
         max_threshold = state.capacity
-        sigma = 3. / (2. * np.square(2. * np.log(2.)))
         unormalized_dist = np.array([stats.norm.pdf(self.threshold,
-                                                    loc=k, scale=sigma) for k in np.arange(max_threshold + 1)])
+                                                    loc=k, scale=self.sigma) for k in np.arange(max_threshold + 1)])
         threshold_distribution = unormalized_dist / np.sum(unormalized_dist)
         # We sample the real threshold according to this distribution
         sample = stats.multinomial(n=1, p=threshold_distribution).rvs()
@@ -406,8 +407,7 @@ class Threshold_N_norm_dist_all(RandomizedPolicyOnState, RandomizedPolicyOnState
         remaining_items = new_state[1, 2].min()
         max_threshold = state.capacity
         # We construct the distribution from which we will sample the real threshold
-        sigma = 3. / (2. * np.square(2. * np.log(2.)))
-        unormalized_dist = np.array([stats.norm.pdf(self.threshold, loc=k, scale=sigma)
+        unormalized_dist = np.array([stats.norm.pdf(self.threshold, loc=k, scale=self.sigma)
                                      for k in np.arange(max_threshold + 1)])
         threshold_distribution = unormalized_dist / np.sum(unormalized_dist)
         for matching_threshold in np.arange(int(max_threshold) + 1):
@@ -419,6 +419,28 @@ class Threshold_N_norm_dist_all(RandomizedPolicyOnState, RandomizedPolicyOnState
     def compute_distribution_state_and_arrival(self, state: mm.State, arrivals: mm.State):
         new_state = state + arrivals
         return self.compute_distribution_state(state=new_state)
+
+    def match_and_threshold(self, state: mm.State):
+        # We construct the distribution from which we will sample the real threshold
+        max_threshold = state.capacity
+        unormalized_dist = np.array([stats.norm.pdf(self.threshold, loc=k, scale=self.sigma)
+                                     for k in np.arange(max_threshold + 1)])
+        threshold_distribution = unormalized_dist / np.sum(unormalized_dist)
+        # We sample the real threshold according to this distribution
+        sample = stats.multinomial(n=1, p=threshold_distribution).rvs()
+        matching_threshold = np.where(sample == 1)[1][0]
+        # We construct the matching
+        u = mm.Matching.zeros(state)
+        # We match all l1
+        u[1, 1] += state[1, 1].min()
+        # We match all l2
+        u[2, 2] += state[2, 2].min()
+        # We update the state with the matchings in l1 and l2 because they have priority and they influence the ones in
+        # l3
+        new_state = state - u
+        # We match all l3 above the threshold
+        u[1, 2] += np.maximum(new_state[1, 2].min() - matching_threshold, 0.)
+        return u, matching_threshold, threshold_distribution[matching_threshold]
 
     def __str__(self):
         return 'Threshold N continuous policy t={}'.format(self.threshold)
